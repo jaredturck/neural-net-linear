@@ -1,17 +1,17 @@
 Layer types:
 linear
 
-Activation functions:
-relu
-sigmoid
-selu
-gelu
-tanh
-softplus
-softmax
+- Activation functions:
+- relu
+- sigmoid
+- selu
+- gelu
+- tanh
+- softplus
+- softmax
 
 loss:
-mean squared error
+- mean squared error
 cross entropy
 
 optimizer:
