@@ -13,7 +13,7 @@ class Loss:
     
     @staticmethod
     def binary_cross_entropy(y_true, y_pred):
-        ''' Binary Cross Entropy - https://www.geeksforgeeks.org/deep-learning/binary-cross-entropy-log-loss-for-binary-classification/ '''
+        ''' Binary Cross Entropy (BCE) - https://www.geeksforgeeks.org/deep-learning/binary-cross-entropy-log-loss-for-binary-classification/ '''
         total = 0
         for y, p, in zip(y_true, y_pred):
             total += y * math.log(p) + (1 - y) * math.log(1 - p)
@@ -21,5 +21,8 @@ class Loss:
     
     @staticmethod
     def categorical_cross_entropy(y_true, y_pred):
-        ''' Categorical Cross Entropy - https://www.geeksforgeeks.org/deep-learning/categorical-cross-entropy-in-multi-class-classification/ '''
-        
+        ''' Categorical Cross Entropy (CCE) - https://www.geeksforgeeks.org/deep-learning/categorical-cross-entropy-in-multi-class-classification/ '''
+        total = 0
+        for y, p in zip(y_true, y_pred):
+            total += y * math.log(p)
+        return -total

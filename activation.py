@@ -44,7 +44,6 @@ class Activation:
     @staticmethod
     def softmax(x_array):
         ''' Applies Softmax - https://www.geeksforgeeks.org/deep-learning/the-role-of-softmax-in-neural-networks-detailed-explanation-and-applications/ '''
-
         max_x = max(x_array)
         exp_values = [math.e ** (x - max_x) for x in x_array]
         total = sum(exp_values)

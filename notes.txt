@@ -10,9 +10,9 @@ linear
 - softplus
 - softmax
 
-loss:
+- loss:
 - mean squared error
-cross entropy
+- cross entropy
 
 optimizer:
 AdamW
