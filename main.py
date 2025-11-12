@@ -21,7 +21,7 @@ class Module:
         ''' Train model '''
 
         x = [0.5, 0.2, 0.8, 0.1, 0.7, 0.3, 0.9, 0.4, 0.6, 0.2]
-        y = [0, 0, 0, 0, 0, 0, 0, 1, 0, 0]
+        y = [0, 0, 1, 0]
 
         for epoch in range(100):
             pred = self.forward(x)

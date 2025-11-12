@@ -7,39 +7,40 @@ class Activation:
     ALPHA = 1.67326
 
     @staticmethod
-    def relu(x):
+    def relu(x_array):
         ''' Applies Rectified Linear Unit (ReLU) - https://www.geeksforgeeks.org/deep-learning/relu-activation-function-in-deep-learning/ '''
-        if x > 0:
-            return x
-        return 0
+        return [max(0, x) for x in x_array]
 
     @staticmethod
-    def sigmoid(x):
+    def sigmoid(x_array):
         ''' Applies Sigmoid activation function - https://en.wikipedia.org/wiki/Sigmoid_function '''
-        return 1 / (1 + (math.e ** -x))
+        return [1 / (1 + (math.e ** -x)) for x in x_array]
 
     @staticmethod
-    def selu(x):
+    def selu(x_array):
         ''' Applies the Scaled Exponential Linear Unit (SELU) - https://www.geeksforgeeks.org/deep-learning/selu-activation-function-in-neural-network/ '''
-        if x > 0:
-            return Activation.LAMBDA * x
-        else:
-            return Activation.LAMBDA * Activation.ALPHA * ((math.e ** x) - 1)
+        output = []
+        for x in x_array:
+            if x > 0:
+                output.append(Activation.LAMBDA * x)
+            else:
+                output.append(Activation.LAMBDA * Activation.ALPHA * ((math.e ** x) - 1))
+        return output
 
     @staticmethod
-    def gelu(x):
+    def gelu(x_array):
         ''' Applies the Gaussian Error Linear Unit (GELU) activation function - https://arxiv.org/pdf/1606.08415 '''
-        return 0.5 * x * (1 + math.erf(x / math.sqrt(2)))
+        return [0.5 * x * (1 + math.erf(x / math.sqrt(2))) for x in x_array]
 
     @staticmethod
-    def tanh(x):
+    def tanh(x_array):
         ''' Applies Hyperbolic Tangent (tanh) - https://www.geeksforgeeks.org/deep-learning/tanh-activation-in-neural-network/ '''
-        return math.tanh(x)
+        return [math.tanh(x) for x in x_array]
 
     @staticmethod
-    def softplus(x):
+    def softplus(x_array):
         ''' Applies the Softplus activation function - https://www.geeksforgeeks.org/deep-learning/softplus-function-in-neural-network/ '''
-        return math.log(1 + (math.e ** x))
+        return [math.log(1 + (math.e ** x)) for x in x_array]
 
     @staticmethod
     def softmax(x_array):
