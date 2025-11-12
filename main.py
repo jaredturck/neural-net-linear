@@ -1,6 +1,7 @@
 from layers import Layer
 from activation import Activation
 from loss import Loss
+from backprop import Backpropogation
 
 class Module:
     def __init__(self):
@@ -19,40 +20,10 @@ class Module:
     
     def backward(self, y):
         ''' Backwards pass '''
-
-        # Layer 3 (softmax)
-        x, z, a = self.layer_3.backprop_cache
-        deltas = [ai - yi for ai, yi in zip(a,y)]
-
-        self.layer_3.gradients = []
-        for i in range(self.layer_3.output_neurons):
-            self.layer_3.gradients.append([deltas[i] * xi for xi in x])
         
-        l2_deltas = []
-        for j in range(self.layer_3.input_neurons):
-            l2_deltas.append(sum(self.layer_3.weights[i][j] * deltas[i] for i in range(self.layer_3.output_neurons)))
-        
-        # Layer 2 (relu)
-        x, z, a = self.layer_2.backprop_cache
-        mask = [int(v > 0) for v in z]
-        deltas = [d * m for d,m in zip(l2_deltas, mask)]
-
-        self.layer_2.gradients = []
-        for i in range(self.layer_2.output_neurons):
-            self.layer_2.gradients.append([deltas[i] * xi for xi in x])
-        
-        l1_deltas = []
-        for j in range(self.layer_2.input_neurons):
-            l1_deltas.append(sum(self.layer_2.weights[i][j] * deltas[i] for i in range(self.layer_2.output_neurons)))
-        
-        # Layer 1 (relu)
-        x, z, a = self.layer_1.backprop_cache
-        mask = [int(v > 0) for v in z]
-        deltas = [d * m for d,m in zip(l1_deltas, mask)]
-
-        self.layer_1.gradients = []
-        for i in range(self.layer_1.output_neurons):
-            self.layer_1.gradients.append([deltas[i] * xi for xi in x])
+        l2_deltas = Backpropogation.compute_softmax_gradients(self.layer_3, y)
+        l1_deltas = Backpropogation.compute_relu_gradients(self.layer_2, l2_deltas)
+        in_deltas = Backpropogation.compute_relu_gradients(self.layer_1, l1_deltas)
     
     def train(self):
         ''' Train model '''
