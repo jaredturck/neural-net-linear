@@ -2,6 +2,8 @@ from layers import Layer
 from activation import Activation
 from loss import Loss
 from backprop import Backpropogation
+from optimizers import Optimizer
+import math
 
 class Module:
     def __init__(self):
@@ -31,9 +33,17 @@ class Module:
         x = [0.5, 0.2, 0.8, 0.1, 0.7, 0.3, 0.9, 0.4, 0.6, 0.2]
         y = [0, 0, 1, 0]
 
-        for epoch in range(100):
+        for epoch in range(10):
             pred = self.forward(x)
-            loss = Loss.categorical_cross_entropy(y, pred)
+            scaler_loss = Loss.categorical_cross_entropy(y, pred)
 
             self.backward(y)
-            # self.optimizer_step()
+            Optimizer.SGD(self.layer_1, self.layer_2, self.layer_3, learning_rate=0.01)
+
+            print(f'Epoch {epoch+1}, loss: {scaler_loss}')
+
+            print([x, y, pred])
+
+if __name__ == '__main__':
+    model = Module()
+    model.train()

@@ -3,7 +3,7 @@ import random
 class Layer:
     ''' Neural network layers '''
 
-    def __init__(self, input_neurons, output_neurons):
+    def __init__(self, input_neurons, output_neurons, activation=None):
         self.input_neurons = input_neurons
         self.output_neurons = output_neurons
         self.weights = []
@@ -11,9 +11,10 @@ class Layer:
             self.weights.append([random.random() for i in range(input_neurons)])
 
         self.bias = [random.random() for i in range(output_neurons)]
+        self.bias_gradients = []
         self.backprop_cache = []
         self.gradients = []
-        self.activation_function = None
+        self.activation_function = activation
 
     def Linear(self, x_array):
         ''' Linear layer '''

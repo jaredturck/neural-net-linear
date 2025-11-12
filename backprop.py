@@ -1,9 +1,10 @@
 
 class Backpropogation:
+    ''' Compute gradients for backpropogation '''
 
     @staticmethod
     def compute_softmax_gradients(layer, y):
-        ''' Compute graidents for softmax activation '''
+        ''' Compute graidents for softmax activation with cross entropy loss '''
 
         x, z, a = layer.backprop_cache
         deltas = [ai - yi for ai, yi in zip(a,y)]
@@ -11,7 +12,8 @@ class Backpropogation:
         layer.gradients = []
         for i in range(layer.output_neurons):
             layer.gradients.append([deltas[i] * xi for xi in x])
-        
+        layer.bias_gradients = deltas
+
         layer_deltas = []
         for j in range(layer.input_neurons):
             layer_deltas.append(sum(layer.weights[i][j] * deltas[i] for i in range(layer.output_neurons)))
@@ -29,6 +31,7 @@ class Backpropogation:
         layer.gradients = []
         for i in range(layer.output_neurons):
             layer.gradients.append([deltas[i] * xi for xi in x])
+        layer.bias_gradients = deltas
         
         layer_deltas = []
         for j in range(layer.input_neurons):
