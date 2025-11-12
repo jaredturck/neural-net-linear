@@ -11,6 +11,9 @@ class Layer:
             self.weights.append([random.random() for i in range(input_neurons)])
 
         self.bias = [random.random() for i in range(output_neurons)]
+        self.backprop_cache = []
+        self.gradients = []
+        self.activation_function = None
 
     def Linear(self, x_array):
         ''' Linear layer '''
@@ -20,4 +23,7 @@ class Layer:
             y = sum(x * w for x,w in zip(x_array, self.weights[i])) + self.bias[i]
             output.append(y)
         
-        return output
+        logits = self.activation_function(output)
+        self.backprop_cache = [x_array, output, logits]
+
+        return logits
