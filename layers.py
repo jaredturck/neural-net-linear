@@ -1,6 +1,6 @@
 import random
 
-class Layers:
+class Layer:
     ''' Neural network layers '''
 
     def __init__(self, input_neurons, output_neurons):
