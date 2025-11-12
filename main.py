@@ -33,16 +33,19 @@ class Module:
         x = [0.5, 0.2, 0.8, 0.1, 0.7, 0.3, 0.9, 0.4, 0.6, 0.2]
         y = [0, 0, 1, 0]
 
-        for epoch in range(10):
+        for epoch in range(1000):
             pred = self.forward(x)
             scaler_loss = Loss.categorical_cross_entropy(y, pred)
 
             self.backward(y)
             Optimizer.SGD(self.layer_1, self.layer_2, self.layer_3, learning_rate=0.01)
 
-            print(f'Epoch {epoch+1}, loss: {scaler_loss}')
+            if epoch % 10 == 0:
+                print(f'Epoch {epoch+1}, loss: {scaler_loss}')
 
-            print([x, y, pred])
+            if scaler_loss <= 0.01:
+                print('Training complete')
+                break
 
 if __name__ == '__main__':
     model = Module()

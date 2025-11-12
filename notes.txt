@@ -1,5 +1,5 @@
-Layer types:
-linear
+- Layer types:
+- linear
 
 - Activation functions:
 - relu
@@ -14,5 +14,5 @@ linear
 - mean squared error
 - cross entropy
 
-optimizer:
-AdamW
+- optimizer:
+- SGD

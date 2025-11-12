@@ -8,9 +8,9 @@ class Layer:
         self.output_neurons = output_neurons
         self.weights = []
         for _ in range(output_neurons):
-            self.weights.append([random.random() for i in range(input_neurons)])
+            self.weights.append([random.uniform(-0.5,0.5) for i in range(input_neurons)])
 
-        self.bias = [random.random() for i in range(output_neurons)]
+        self.bias = [random.uniform(-0.5,0.5) for i in range(output_neurons)]
         self.bias_gradients = []
         self.backprop_cache = []
         self.gradients = []
