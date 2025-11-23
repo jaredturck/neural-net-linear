@@ -28,6 +28,9 @@ typedef struct {
     float** gradients;
     ActivationFunction* activation_function;
     ActivationType activation_type;
+    float* deltas;
+    float* layer_deltas;
+    int* mask;
 } Layer;
 
 Layer* create_layer(int input_neurons, int output_neurons, ActivationFunction* activation_function, ActivationType activation_type) {
@@ -78,6 +81,11 @@ Layer* create_layer(int input_neurons, int output_neurons, ActivationFunction* a
 
     layer->activation_function = activation_function;
     layer->activation_type = activation_type;
+
+    layer->deltas = malloc(output_neurons * sizeof(float));
+    layer->layer_deltas = malloc(input_neurons * sizeof(float));
+    layer->mask = malloc(output_neurons * sizeof(int));
+
     return layer;
 }
 

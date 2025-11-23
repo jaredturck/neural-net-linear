@@ -22,7 +22,7 @@ class Backpropogation:
     
     @staticmethod
     def compute_relu_gradients(layer, deltas):
-        ''' Compute dragients for relu activation'''
+        ''' Compute dragients for relu activation '''
 
         x, z, a = layer.backprop_cache
         mask = [int(v > 0) for v in z]
