@@ -3,7 +3,7 @@ import ctypes, itertools
 
 class Module:
     def __init__(self):
-        self.lib = ctypes.CDLL('./src/bin/main.so')
+        self.lib = ctypes.CDLL('./nn/bin/main.so')
         self.lib.py_train.argtypes = [
             ctypes.POINTER(ctypes.c_float),
             ctypes.POINTER(ctypes.c_float),
