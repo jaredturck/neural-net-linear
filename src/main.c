@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include "activation.c"
 #include "layers.c"
 
@@ -17,6 +19,7 @@ void forward(float* x_array, Layer* layer_1, Layer* layer_2, Layer* layer_3) {
 
 // Module - build 3 layer neural network
 int main() {
+    srand((unsigned) time(NULL));
     Layer* layer_1 = create_layer(18, 32, relu, F_RELU);
     Layer* layer_2 = create_layer(32, 32, relu, F_RELU);
     Layer* layer_3 = create_layer(32, 12, NULL, F_SOFTMAX);
