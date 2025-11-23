@@ -15,56 +15,38 @@ float array_max(float x_array[], int array_size) {
     return largest;
 }
 
-float* relu(float x_array[], int array_size) {
+float relu(float x) {
     // Applies Rectified Linear Unit (ReLU) - https://www.geeksforgeeks.org/deep-learning/relu-activation-function-in-deep-learning/
-    for (int i=0; i<array_size; i++) {
-        x_array[i] = (x_array[i] > 0) ? x_array[i] : 0;
-    }
-    return x_array;
+    return (x > 0) ? x : 0;
 }
 
-float* sigmoid(float x_array[], int array_size) {
+float sigmoid(float x) {
     // Applies Sigmoid activation function - https://en.wikipedia.org/wiki/Sigmoid_function
-    for (int i=0; i<array_size; i++) {
-        x_array[i] = 1 / (1 + expf(-x_array[i]));
-    }
-    return x_array;
+    return 1 / (1 + expf(-x));
 }
 
-float* selu(float x_array[], int array_size){
+float selu(float x){
     // Applies the Scaled Exponential Linear Unit (SELU) - https://www.geeksforgeeks.org/deep-learning/selu-activation-function-in-neural-network/
-    for (int i=0; i<array_size; i++) {
-        if (x_array[i] > 0) {
-            x_array[i] = LAMBDA * x_array[i];
-        } else {
-            x_array[i] = LAMBDA * ALPHA * (expf(x_array[i]) - 1);
-        }
+    if (x > 0) {
+        return LAMBDA * x;
+    } else {
+        return LAMBDA * ALPHA * (expf(x) - 1);
     }
-    return x_array;
 }
 
-float* gelu(float x_array[], int array_size){
+float gelu(float x){
     // Applies the Gaussian Error Linear Unit (GELU) activation function - https://arxiv.org/pdf/1606.08415
-    for (int i=0; i<array_size; i++) {
-        x_array[i] = 0.5 * x_array[i] * (1 + erff(x_array[i] / ROOT2));
-    }
-    return x_array;
+    return 0.5 * x * (1 + erff(x / ROOT2));
 }
 
-float* array_tanh(float x_array[], int array_size){
+float array_tanh(float x){
     // Applies Hyperbolic Tangent (tanh) - https://www.geeksforgeeks.org/deep-learning/tanh-activation-in-neural-network/`
-    for (int i=0; i<array_size; i++) {
-        x_array[i] = tanhf(x_array[i]);
-    }
-    return x_array;
+    return tanhf(x);
 }
 
-float* softplus(float x_array[], int array_size){
+float softplus(float x){
     // Applies the Softplus activation function - https://www.geeksforgeeks.org/deep-learning/softplus-function-in-neural-network/
-    for (int i=0; i<array_size; i++) {
-        x_array[i] = logf(1 + expf(x_array[i]));
-    }
-    return x_array;
+    return logf(1 + expf(x));
 }
 
 float* softmax(float x_array[], int array_size){
