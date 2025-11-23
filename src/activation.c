@@ -1,3 +1,4 @@
+#include "activation.h"
 #include <math.h>
 
 const float LAMBDA = 1.0507;
@@ -25,7 +26,7 @@ float sigmoid(float x) {
     return 1 / (1 + expf(-x));
 }
 
-float selu(float x){
+float selu(float x) {
     // Applies the Scaled Exponential Linear Unit (SELU) - https://www.geeksforgeeks.org/deep-learning/selu-activation-function-in-neural-network/
     if (x > 0) {
         return LAMBDA * x;
@@ -34,22 +35,22 @@ float selu(float x){
     }
 }
 
-float gelu(float x){
+float gelu(float x) {
     // Applies the Gaussian Error Linear Unit (GELU) activation function - https://arxiv.org/pdf/1606.08415
     return 0.5 * x * (1 + erff(x / ROOT2));
 }
 
-float array_tanh(float x){
+float array_tanh(float x) {
     // Applies Hyperbolic Tangent (tanh) - https://www.geeksforgeeks.org/deep-learning/tanh-activation-in-neural-network/`
     return tanhf(x);
 }
 
-float softplus(float x){
+float softplus(float x) {
     // Applies the Softplus activation function - https://www.geeksforgeeks.org/deep-learning/softplus-function-in-neural-network/
     return logf(1 + expf(x));
 }
 
-float* softmax(float x_array[], int array_size){
+float* softmax(float x_array[], int array_size) {
     // Applies Softmax - https://www.geeksforgeeks.org/deep-learning/the-role-of-softmax-in-neural-networks-detailed-explanation-and-applications/
     float max_x = array_max(x_array, array_size);
     float total = 0.0;

@@ -1,4 +1,4 @@
-#include "layers.c"
+#include "layers.h"
 
 void compute_softmax_gradients(Layer* layer, float* y_array) {
     // Compute graidents for softmax activation with cross entropy loss
@@ -25,7 +25,7 @@ void compute_softmax_gradients(Layer* layer, float* y_array) {
     }
 }
 
-void compute_relu_gradients(Layer* layer, float* y_array) {
+void compute_relu_gradients(Layer* layer, float* deltas) {
     // Compute dragients for relu activation
 
     // calculate mask
@@ -35,7 +35,7 @@ void compute_relu_gradients(Layer* layer, float* y_array) {
 
     // Compute deltas
     for (int i=0; i<layer->output_neurons; i++) {
-        layer->deltas[i] = layer->deltas[i] * layer->mask[i];
+        layer->deltas[i] = deltas[i] * layer->mask[i];
     }
 
     // Compute gradients
