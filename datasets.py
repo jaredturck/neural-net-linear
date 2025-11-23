@@ -3,7 +3,8 @@ class Datasets:
 
     def __init__(self):
         self.alphabet = 'abcdefghijklmnopqrstuvwxyz '
-        self.train = []
+        self.train_x = []
+        self.train_y = []
         self.labels = [
             'amphibian', 'arachnid', 'bird', 'cnidarian', 'crustacean', 'echinoderm', 
             'fish', 'insect', 'mammal', 'marsupial', 'mollusk', 'reptile'
@@ -34,4 +35,5 @@ class Datasets:
                     x = x + ([0] * (18 - len(x)))
                     y = [0] * 12
                     y[self.labels.index(family)] = 1
-                    self.train.append((x,y))
+                    self.train_x.append(x)
+                    self.train_y.append(y)
