@@ -30,7 +30,7 @@ typedef struct {
     ActivationType activation_type;
 } Layer;
 
-Layer* create_layer(int* input_neurons, int* output_neurons, ActivationFunction* activation_function) {
+Layer* create_layer(int* input_neurons, int* output_neurons, ActivationFunction* activation_function, ActivationType activation_type) {
     Layer* layer = malloc(sizeof(Layer));
     layer->input_neurons = *input_neurons;
     layer->output_neurons = *output_neurons;
@@ -62,9 +62,6 @@ Layer* create_layer(int* input_neurons, int* output_neurons, ActivationFunction*
     layer->backprop_cache->output = malloc(*output_neurons * sizeof(float));
     layer->backprop_cache->logits = malloc(*output_neurons * sizeof(float));
 
-    for (int i=0; i<*input_neurons; i++) {
-        layer->backprop_cache->x_array[i] = 0.0;
-    }
     for (int i=0; i<*output_neurons; i++) {
         layer->backprop_cache->output[i] = 0.0;
         layer->backprop_cache->logits[i] = 0.0;
@@ -80,6 +77,7 @@ Layer* create_layer(int* input_neurons, int* output_neurons, ActivationFunction*
     }
 
     layer->activation_function = activation_function;
+    layer->activation_type = activation_type;
     return layer;
 }
 
