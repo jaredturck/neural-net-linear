@@ -15,6 +15,9 @@ gcc -std=c11 -O3 -fPIC -shared \
     nn/nn.c \
     nn/optimizers.c \
     nn/samplers.c \
+    nn/tensor.c \
+    nn/tokenizer.c \
+    nn/transformer.c \
     -lm \
     -o nn/bin/main.so
 
