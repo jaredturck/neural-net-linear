@@ -16,11 +16,36 @@ static void write_repeat(const char* path, const char* text, int repeat) {
     assert(fclose(file) == 0);
 }
 
+static int same_file(const char* first_path, const char* second_path) {
+    FILE* first = fopen(first_path, "rb");
+    FILE* second = fopen(second_path, "rb");
+    assert(first != NULL && second != NULL);
+
+    int a;
+    int b;
+    do {
+        a = fgetc(first);
+        b = fgetc(second);
+        if (a != b) {
+            fclose(first);
+            fclose(second);
+            return 0;
+        }
+    } while (a != EOF);
+
+    int valid = !ferror(first) && !ferror(second);
+    assert(fclose(first) == 0);
+    assert(fclose(second) == 0);
+    return valid;
+}
+
 int main(void) {
     const char* first_path = "/tmp/nn_edges_first.txt";
     const char* second_path = "/tmp/nn_edges_second.txt";
     const char* tokenizer_path = "/tmp/nn_edges.bpe";
     const char* model_path = "/tmp/nn_edges.gpt";
+    const char* resumed_a_path = "/tmp/nn_edges_resumed_a.gpt";
+    const char* resumed_b_path = "/tmp/nn_edges_resumed_b.gpt";
     const char* corrupt_model_path = "/tmp/nn_edges_corrupt.gpt";
 
     write_repeat(first_path, "cat mammal spider arachnid salmon fish\n", 100);
@@ -89,12 +114,35 @@ int main(void) {
         &generated_bytes
     ) == NULL);
 
+    GPTTrainConfig resume_config = {
+        .epochs = 1,
+        .batch_size = 2,
+        .steps_per_epoch = 1,
+        .log_every = 0,
+        .warmup_steps = 4,
+        .learning_rate = 0.001f,
+        .weight_decay = 0.01f,
+        .beta1 = 0.9f,
+        .beta2 = 0.999f,
+        .epsilon = 1e-8f,
+        .grad_clip = 1.0f,
+        .seed = 44
+    };
+    assert(gpt_train_file(model, first, first_path, &resume_config));
     assert(gpt_save(model, model_path));
+
     GPTModel* loaded = gpt_load(model_path);
     assert(loaded != NULL);
     assert(gpt_tokenizer_fingerprint(loaded) == bpe_fingerprint(first));
     assert(gpt_bind_tokenizer(loaded, loaded_tokenizer));
     assert(!gpt_bind_tokenizer(loaded, second));
+
+    /* AdamW moments and optimizer step must survive checkpointing exactly. */
+    assert(gpt_train_file(model, first, first_path, &resume_config));
+    assert(gpt_train_file(loaded, loaded_tokenizer, first_path, &resume_config));
+    assert(gpt_save(model, resumed_a_path));
+    assert(gpt_save(loaded, resumed_b_path));
+    assert(same_file(resumed_a_path, resumed_b_path));
 
     FILE* input = fopen(model_path, "rb");
     FILE* output = fopen(corrupt_model_path, "wb");
