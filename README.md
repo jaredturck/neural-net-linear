@@ -1,18 +1,33 @@
-A neural network built completely from scratch in C, with a small Python `ctypes` entry point.
+A neural network built completely from scratch in C, with a small Python wrapper over the C API.
 
-All neural-network computation, dataset parsing, sampling, batching, and training logic is implemented in C using only the ISO C standard library.
+All neural-network computation, dataset parsing, sampling, batching, and training logic is implemented in C using only the ISO C standard library. `neuralnet.py` contains the `ctypes` binding and Python-facing framework classes; `main.py` is the user entry point for defining a model, configuring data, training, and inference.
 
-## Model API
+## Python API
 
-Models are explicit collections of layers:
+User code does not need to configure `ctypes` or call raw C functions directly:
 
 ```python
+from neuralnet import (
+    DataLoader,
+    Dataset,
+    F_RELU,
+    F_SOFTMAX,
+    LABEL,
+    Model,
+    RandomSampler,
+    TEXT,
+    train,
+)
+
+
 class AnimalModel(Model):
     def __init__(self, input_size, output_size):
         super().__init__()
         self.add_linear(input_size, 16, F_RELU)
         self.add_linear(16, output_size, F_SOFTMAX)
 ```
+
+The wrapper is only interface plumbing. Model execution, backpropagation, optimization, dataset processing, sampling, and batching remain in C.
 
 ## Table datasets
 
