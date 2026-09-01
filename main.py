@@ -1,36 +1,46 @@
 import neuralnet as nn
 
 
-class AnimalModel(nn.Model):
-    def __init__(self, input_size, output_size):
-        super().__init__()
-        self.add_linear(input_size, 16, nn.Activation.RELU)
-        self.add_linear(16, output_size, nn.Activation.SOFTMAX)
-
-
 if __name__ == '__main__':
-    dataset = nn.Dataset().csv(
-        'train.txt',
-        x=[0],
-        y=[1],
-        types={
-            0: nn.FieldType.TEXT,
-            1: nn.FieldType.LABEL,
-        },
+    tokenizer = nn.Tokenizer.train('train.txt', vocab_size=320)
+
+    model = nn.GPT(
+        tokenizer.vocab_size,
+        context_length=32,
+        embedding_dim=64,
+        heads=4,
+        layers=2,
+        hidden_dim=192,
+        seed=42,
     )
 
-    sampler = nn.RandomSampler(dataset, seed=42)
-    loader = nn.DataLoader(dataset, sampler, batch_size=16)
-    model = AnimalModel(loader.input_size, loader.output_size)
+    optimizer = nn.AdamW(
+        learning_rate=0.002,
+        weight_decay=0.01,
+    )
 
-    print('[+] Training started')
-    nn.train(model, loader, 5000, 0.001)
+    print('[+] Training GPT')
+    model.train(
+        tokenizer,
+        'train.txt',
+        epochs=20,
+        batch_size=8,
+        steps_per_epoch=10,
+        optimizer=optimizer,
+        warmup_steps=10,
+        grad_clip=1.0,
+        seed=42,
+        log_every=20,
+    )
 
-    for animal in ['cat', 'spider', 'salmon']:
-        prediction = model.forward(dataset.encode(animal))
-        print(f'{animal}: {dataset.label(prediction)}')
+    print(model.generate(
+        tokenizer,
+        'spider,',
+        max_tokens=64,
+        temperature=0.8,
+        top_k=20,
+        seed=42,
+    ))
 
     model.free()
-    loader.free()
-    sampler.free()
-    dataset.free()
+    tokenizer.free()
