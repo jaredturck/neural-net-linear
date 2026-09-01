@@ -6,7 +6,7 @@ gcc -O2 activation.c backprop.c datasets.c layers.c loss.c optimizers.c nn.c mai
 gcc -O2 -fPIC -shared activation.c backprop.c datasets.c layers.c loss.c optimizers.c nn.c -lm -o bin/main.so
 ```
 
-Public API:
+Public model API:
 
 ```c
 #include "nn.h"
@@ -21,4 +21,14 @@ forward(model, input, output);
 free_model(model);
 ```
 
-`Model` is opaque. Layer storage, weights, caches, and execution details stay internal to the library.
+Dataset preparation is also implemented in C:
+
+```c
+#include "datasets.h"
+
+Dataset* dataset = load_animal_dataset("../train.txt");
+train(model, dataset_train_x(dataset), dataset_train_y(dataset), dataset_size(dataset), 5000, 0.001);
+free_dataset(dataset);
+```
+
+`Model` and `Dataset` are opaque. The Python entry point only loads this API with `ctypes`.
