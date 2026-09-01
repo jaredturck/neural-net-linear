@@ -1,18 +1,24 @@
-A neural network built completely from scratch, without the use of a framework.
+A neural network built completely from scratch in C, with a small Python wrapper for training and inference.
+
+The public C API is intentionally small and sequential:
+
+```c
+Model* model = create_model(18);
+
+add_linear(model, 32, F_RELU);
+add_linear(model, 32, F_RELU);
+add_linear(model, 12, F_SOFTMAX);
+
+train(model, train_x, train_y, dataset_size, 5000, 0.001);
+forward(model, input, output);
+
+free_model(model);
 ```
-(env) [jared@Jared-PC neural-net-linear]$ python main.py
-[+] Training started
-Epoch 1, loss 5.432217
-Epoch 101, loss 0.352506
-Epoch 201, loss 0.165082
-Epoch 301, loss 0.099537
-Epoch 401, loss 0.071228
-Training complete at epoch 460, loss 0.049664
-Enter animal: cat
-mammal
-Enter animal: dog
-mammal
-Enter animal: carp
-fish
-Enter animal: 
+
+Layer input sizes are inferred from the previous layer, so models can be built with different widths and depths without changing the training code.
+
+Build the C library from `nn/`, then run:
+
+```bash
+python main.py
 ```

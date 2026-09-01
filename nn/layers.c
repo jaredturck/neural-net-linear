@@ -27,9 +27,9 @@ Layer* create_layer(int input_neurons, int output_neurons, ActivationFunction* a
         layer->bias_gradients[i] = 0.0;
     }
 
-    // Initalize backprop cache
+    // Initialize backprop cache
     layer->backprop_cache = malloc(sizeof(BackpropCache));
-    // layer->backprop_cache->x_array = malloc(*input_neurons * sizeof(float));
+    layer->backprop_cache->x_array = NULL;
     layer->backprop_cache->output = malloc(output_neurons * sizeof(float));
     layer->backprop_cache->logits = malloc(output_neurons * sizeof(float));
 
@@ -52,9 +52,26 @@ Layer* create_layer(int input_neurons, int output_neurons, ActivationFunction* a
 
     layer->deltas = malloc(output_neurons * sizeof(float));
     layer->layer_deltas = malloc(input_neurons * sizeof(float));
-    layer->mask = malloc(output_neurons * sizeof(int));
 
     return layer;
+}
+
+void free_layer(Layer* layer) {
+    for (int i=0; i<layer->output_neurons; i++) {
+        free(layer->weights[i]);
+        free(layer->gradients[i]);
+    }
+
+    free(layer->weights);
+    free(layer->bias);
+    free(layer->bias_gradients);
+    free(layer->backprop_cache->output);
+    free(layer->backprop_cache->logits);
+    free(layer->backprop_cache);
+    free(layer->gradients);
+    free(layer->deltas);
+    free(layer->layer_deltas);
+    free(layer);
 }
 
 float* Linear(Layer *layer, float* x_array) {
