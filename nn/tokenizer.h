@@ -10,6 +10,7 @@ BPETokenizer* bpe_load(const char* path);
 int bpe_save(BPETokenizer* tokenizer, const char* path);
 int bpe_vocab_size(BPETokenizer* tokenizer);
 int bpe_merge_count(BPETokenizer* tokenizer);
+uint64_t bpe_fingerprint(BPETokenizer* tokenizer);
 
 int bpe_encode(
     BPETokenizer* tokenizer,
