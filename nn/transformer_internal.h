@@ -36,6 +36,7 @@ struct GPTModel {
     int layers;
     int hidden_dim;
     uint64_t optimizer_step;
+    uint64_t tokenizer_fingerprint;
 
     Parameter* token_embedding;
     GPTBlock* blocks;
@@ -99,7 +100,9 @@ void initialize_norm(Parameter* parameter);
 void zero_parameter_gradients(GPTModel* model);
 float gradient_norm(GPTModel* model);
 void scale_gradients(GPTModel* model, float scale);
-void adamw_step(GPTModel* model, float learning_rate, float weight_decay, float beta1, float beta2, float epsilon);
+int gradients_are_finite(GPTModel* model);
+int parameters_are_finite(GPTModel* model);
+int adamw_step(GPTModel* model, float learning_rate, float weight_decay, float beta1, float beta2, float epsilon);
 
 void rms_norm_forward(const float* input, const float* weight, float* output, float* inverse_rms, size_t rows, int width);
 void rms_norm_backward(const float* input, const float* weight, const float* inverse_rms, const float* output_gradient, float* input_gradient, float* weight_gradient, size_t rows, int width);
