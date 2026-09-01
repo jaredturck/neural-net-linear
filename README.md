@@ -1,4 +1,6 @@
-A neural network built completely from scratch in C, with a small Python wrapper for training and inference.
+A neural network built completely from scratch in C, with a small Python `ctypes` entry point for interacting with the C API.
+
+All neural-network, training, and dataset preparation logic is implemented in C using only the C standard library. The Python entry point contains no model or data-processing implementation.
 
 The public C API is intentionally small and sequential:
 
