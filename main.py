@@ -94,14 +94,11 @@ def train(model, dataset, epochs, learning_rate):
     lib.train_dataset(model.model, dataset.dataset, epochs, learning_rate)
 
 
-class AnimalModel:
+class AnimalModel(Model):
     def __init__(self, input_size, output_size):
-        self.model = Model()
-        self.model.add_linear(input_size, 16, F_RELU)
-        self.model.add_linear(16, output_size, F_SOFTMAX)
-
-    def forward(self, x):
-        return self.model.forward(x)
+        super().__init__()
+        self.add_linear(input_size, 16, F_RELU)
+        self.add_linear(16, output_size, F_SOFTMAX)
 
 
 if __name__ == '__main__':
@@ -111,11 +108,11 @@ if __name__ == '__main__':
     model = AnimalModel(dataset.input_size, dataset.output_size)
 
     print('[+] Training started')
-    train(model.model, dataset, 5000, 0.001)
+    train(model, dataset, 5000, 0.001)
 
     for animal in ['cat', 'spider', 'salmon']:
         prediction = model.forward(dataset.tokenize(animal))
         print(f'{animal}: {dataset.label(prediction)}')
 
-    model.model.free()
+    model.free()
     dataset.free()
