@@ -24,8 +24,14 @@ typedef struct {
     float* layer_deltas;
 } Layer;
 
-Layer* create_layer(int input_neurons, int output_neurons, ActivationFunction* activation_function, ActivationType activation_type);
+Layer* create_layer(
+    int input_neurons,
+    int output_neurons,
+    ActivationFunction* activation_function,
+    ActivationType activation_type
+);
 void zero_layer_gradients(Layer* layer);
+void scale_layer_gradients(Layer* layer, float scale);
 void free_layer(Layer* layer);
 float* Linear(Layer* layer, float* x_array);
 
