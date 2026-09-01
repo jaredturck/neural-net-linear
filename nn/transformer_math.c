@@ -1,4 +1,5 @@
 #include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,6 +63,9 @@ void free_parameter(Parameter* parameter) {
 
 static int register_parameter(GPTModel* model, Parameter* parameter) {
     if (model->parameter_count == model->parameter_capacity) {
+        if (model->parameter_capacity > INT_MAX / 2) {
+            return 0;
+        }
         int capacity = model->parameter_capacity == 0 ? 16 : model->parameter_capacity * 2;
         Parameter** resized = realloc(
             model->parameters,
@@ -87,7 +91,7 @@ Parameter* add_parameter(GPTModel* model, size_t count, int weight_decay) {
 }
 
 void initialize_matrix(Parameter* parameter, int input_size, int output_size, RandomState* random) {
-    float limit = sqrtf(6.0f / (float)(input_size + output_size));
+    float limit = sqrtf(6.0f / ((float)input_size + (float)output_size));
     for (size_t i = 0; i < parameter->count; i++) {
         parameter->data[i] = (2.0f * random_uniform(random) - 1.0f) * limit;
     }
@@ -107,15 +111,42 @@ void zero_parameter_gradients(GPTModel* model) {
 }
 
 float gradient_norm(GPTModel* model) {
-    double total = 0.0;
+    if (model == NULL) {
+        return NAN;
+    }
+
+    /* Stable scaled sum-of-squares, equivalent to BLAS nrm2 without a dependency. */
+    double scale = 0.0;
+    double sum_squares = 1.0;
+    int has_nonzero = 0;
+
     for (int p = 0; p < model->parameter_count; p++) {
         Parameter* parameter = model->parameters[p];
         for (size_t i = 0; i < parameter->count; i++) {
-            double value = parameter->grad[i];
-            total += value * value;
+            double value = fabs((double)parameter->grad[i]);
+            if (!isfinite(value)) {
+                return NAN;
+            }
+            if (value == 0.0) {
+                continue;
+            }
+            has_nonzero = 1;
+            if (scale < value) {
+                double ratio = scale / value;
+                sum_squares = 1.0 + sum_squares * ratio * ratio;
+                scale = value;
+            } else {
+                double ratio = value / scale;
+                sum_squares += ratio * ratio;
+            }
         }
     }
-    return sqrtf((float)total);
+
+    if (!has_nonzero) {
+        return 0.0f;
+    }
+    double norm = scale * sqrt(sum_squares);
+    return norm > (double)FLT_MAX ? INFINITY : (float)norm;
 }
 
 void scale_gradients(GPTModel* model, float scale) {
@@ -127,7 +158,39 @@ void scale_gradients(GPTModel* model, float scale) {
     }
 }
 
-void adamw_step(
+int gradients_are_finite(GPTModel* model) {
+    if (model == NULL) {
+        return 0;
+    }
+    for (int p = 0; p < model->parameter_count; p++) {
+        Parameter* parameter = model->parameters[p];
+        for (size_t i = 0; i < parameter->count; i++) {
+            if (!isfinite(parameter->grad[i])) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+int parameters_are_finite(GPTModel* model) {
+    if (model == NULL) {
+        return 0;
+    }
+    for (int p = 0; p < model->parameter_count; p++) {
+        Parameter* parameter = model->parameters[p];
+        for (size_t i = 0; i < parameter->count; i++) {
+            if (!isfinite(parameter->data[i]) ||
+                !isfinite(parameter->first_moment[i]) ||
+                !isfinite(parameter->second_moment[i])) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+int adamw_step(
     GPTModel* model,
     float learning_rate,
     float weight_decay,
@@ -135,9 +198,48 @@ void adamw_step(
     float beta2,
     float epsilon
 ) {
-    model->optimizer_step++;
-    double correction1 = 1.0 - pow((double)beta1, (double)model->optimizer_step);
-    double correction2 = 1.0 - pow((double)beta2, (double)model->optimizer_step);
+    if (model == NULL || model->optimizer_step == UINT64_MAX ||
+        !isfinite(learning_rate) || learning_rate <= 0.0f ||
+        !isfinite(weight_decay) || weight_decay < 0.0f ||
+        !isfinite(beta1) || beta1 < 0.0f || beta1 >= 1.0f ||
+        !isfinite(beta2) || beta2 < 0.0f || beta2 >= 1.0f ||
+        !isfinite(epsilon) || epsilon <= 0.0f ||
+        !gradients_are_finite(model) || !parameters_are_finite(model)) {
+        return 0;
+    }
+
+    uint64_t next_step = model->optimizer_step + 1;
+    double correction1 = 1.0 - pow((double)beta1, (double)next_step);
+    double correction2 = 1.0 - pow((double)beta2, (double)next_step);
+    if (!isfinite(correction1) || !isfinite(correction2) ||
+        correction1 <= 0.0 || correction2 <= 0.0) {
+        return 0;
+    }
+
+    /* Validate the complete update before mutating any optimizer or parameter state. */
+    for (int p = 0; p < model->parameter_count; p++) {
+        Parameter* parameter = model->parameters[p];
+        for (size_t i = 0; i < parameter->count; i++) {
+            float gradient = parameter->grad[i];
+            float first = beta1 * parameter->first_moment[i] + (1.0f - beta1) * gradient;
+            float second = beta2 * parameter->second_moment[i] +
+                (1.0f - beta2) * gradient * gradient;
+            float first_hat = (float)((double)first / correction1);
+            float second_hat = (float)((double)second / correction2);
+            if (!isfinite(first) || !isfinite(second) || second_hat < 0.0f ||
+                !isfinite(first_hat) || !isfinite(second_hat)) {
+                return 0;
+            }
+            float update = first_hat / (sqrtf(second_hat) + epsilon);
+            if (parameter->weight_decay) {
+                update += weight_decay * parameter->data[i];
+            }
+            float next_value = parameter->data[i] - learning_rate * update;
+            if (!isfinite(update) || !isfinite(next_value)) {
+                return 0;
+            }
+        }
+    }
 
     for (int p = 0; p < model->parameter_count; p++) {
         Parameter* parameter = model->parameters[p];
@@ -158,6 +260,9 @@ void adamw_step(
             parameter->data[i] -= learning_rate * update;
         }
     }
+
+    model->optimizer_step = next_step;
+    return 1;
 }
 
 void rms_norm_forward(
