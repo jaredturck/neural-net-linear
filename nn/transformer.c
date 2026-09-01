@@ -1,11 +1,34 @@
 #include <float.h>
 #include <limits.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "transformer_internal.h"
+
+static int checked_size_multiply(size_t left, size_t right, size_t* output) {
+    if (output == NULL || (right != 0 && left > SIZE_MAX / right)) {
+        return 0;
+    }
+    *output = left * right;
+    return 1;
+}
+
+static Parameter* add_matrix_parameter(
+    GPTModel* model,
+    int rows,
+    int columns,
+    int weight_decay
+) {
+    size_t count = 0;
+    if (rows <= 0 || columns <= 0 ||
+        !checked_size_multiply((size_t)rows, (size_t)columns, &count)) {
+        return NULL;
+    }
+    return add_parameter(model, count, weight_decay);
+}
 
 GPTModel* create_gpt_model(
     int vocab_size,
@@ -18,7 +41,8 @@ GPTModel* create_gpt_model(
 ) {
     if (vocab_size < 2 || context_length <= 0 || embedding_dim <= 0 || heads <= 0 ||
         layers <= 0 || hidden_dim <= 0 || embedding_dim % heads != 0 ||
-        (embedding_dim / heads) % 2 != 0) {
+        (embedding_dim / heads) % 2 != 0 || embedding_dim > INT_MAX / 3 ||
+        layers > (INT_MAX - 2) / 7) {
         return NULL;
     }
 
@@ -40,11 +64,7 @@ GPTModel* create_gpt_model(
     }
 
     RandomState random = {seed == 0 ? 1u : seed};
-    model->token_embedding = add_parameter(
-        model,
-        (size_t)vocab_size * (size_t)embedding_dim,
-        1
-    );
+    model->token_embedding = add_matrix_parameter(model, vocab_size, embedding_dim, 1);
     if (model->token_embedding == NULL) {
         free_gpt_model(model);
         return NULL;
@@ -54,32 +74,12 @@ GPTModel* create_gpt_model(
     for (int layer = 0; layer < layers; layer++) {
         GPTBlock* block = &model->blocks[layer];
         block->rms_attention = add_parameter(model, (size_t)embedding_dim, 0);
-        block->qkv = add_parameter(
-            model,
-            (size_t)(3 * embedding_dim) * (size_t)embedding_dim,
-            1
-        );
-        block->attention_output = add_parameter(
-            model,
-            (size_t)embedding_dim * (size_t)embedding_dim,
-            1
-        );
+        block->qkv = add_matrix_parameter(model, 3 * embedding_dim, embedding_dim, 1);
+        block->attention_output = add_matrix_parameter(model, embedding_dim, embedding_dim, 1);
         block->rms_feed_forward = add_parameter(model, (size_t)embedding_dim, 0);
-        block->feed_forward_gate = add_parameter(
-            model,
-            (size_t)hidden_dim * (size_t)embedding_dim,
-            1
-        );
-        block->feed_forward_value = add_parameter(
-            model,
-            (size_t)hidden_dim * (size_t)embedding_dim,
-            1
-        );
-        block->feed_forward_output = add_parameter(
-            model,
-            (size_t)embedding_dim * (size_t)hidden_dim,
-            1
-        );
+        block->feed_forward_gate = add_matrix_parameter(model, hidden_dim, embedding_dim, 1);
+        block->feed_forward_value = add_matrix_parameter(model, hidden_dim, embedding_dim, 1);
+        block->feed_forward_output = add_matrix_parameter(model, embedding_dim, hidden_dim, 1);
 
         if (block->rms_attention == NULL || block->qkv == NULL ||
             block->attention_output == NULL || block->rms_feed_forward == NULL ||
@@ -113,6 +113,24 @@ int gpt_embedding_dim(GPTModel* model) { return model == NULL ? 0 : model->embed
 int gpt_head_count(GPTModel* model) { return model == NULL ? 0 : model->heads; }
 int gpt_layer_count(GPTModel* model) { return model == NULL ? 0 : model->layers; }
 int gpt_hidden_dim(GPTModel* model) { return model == NULL ? 0 : model->hidden_dim; }
+uint64_t gpt_tokenizer_fingerprint(GPTModel* model) {
+    return model == NULL ? 0 : model->tokenizer_fingerprint;
+}
+
+int gpt_bind_tokenizer(GPTModel* model, BPETokenizer* tokenizer) {
+    if (model == NULL || tokenizer == NULL || bpe_vocab_size(tokenizer) != model->vocab_size) {
+        return 0;
+    }
+    uint64_t fingerprint = bpe_fingerprint(tokenizer);
+    if (fingerprint == 0) {
+        return 0;
+    }
+    if (model->tokenizer_fingerprint == 0) {
+        model->tokenizer_fingerprint = fingerprint;
+        return 1;
+    }
+    return model->tokenizer_fingerprint == fingerprint;
+}
 
 static void shuffle_ints(int* values, int count, RandomState* random) {
     for (int i = count - 1; i > 0; i--) {
@@ -147,10 +165,15 @@ int gpt_train_file(
     const GPTTrainConfig* config
 ) {
     if (model == NULL || tokenizer == NULL || path == NULL || config == NULL ||
-        bpe_vocab_size(tokenizer) != model->vocab_size || config->epochs <= 0 ||
-        config->batch_size <= 0 || config->learning_rate <= 0.0f ||
-        config->beta1 < 0.0f || config->beta1 >= 1.0f ||
-        config->beta2 < 0.0f || config->beta2 >= 1.0f || config->epsilon <= 0.0f) {
+        config->epochs <= 0 || config->batch_size <= 0 || config->steps_per_epoch < 0 ||
+        config->log_every < 0 || config->warmup_steps < 0 ||
+        !isfinite(config->learning_rate) || config->learning_rate <= 0.0f ||
+        !isfinite(config->weight_decay) || config->weight_decay < 0.0f ||
+        !isfinite(config->beta1) || config->beta1 < 0.0f || config->beta1 >= 1.0f ||
+        !isfinite(config->beta2) || config->beta2 < 0.0f || config->beta2 >= 1.0f ||
+        !isfinite(config->epsilon) || config->epsilon <= 0.0f ||
+        !isfinite(config->grad_clip) || config->grad_clip < 0.0f ||
+        !parameters_are_finite(model) || !gpt_bind_tokenizer(model, tokenizer)) {
         return 0;
     }
 
@@ -168,14 +191,27 @@ int gpt_train_file(
         return 0;
     }
 
-    int* blocks = malloc((size_t)block_count * sizeof(int));
-    int* batch_starts = malloc((size_t)config->batch_size * sizeof(int));
-    int32_t* input = malloc(
-        (size_t)config->batch_size * (size_t)sequence * sizeof(int32_t)
-    );
-    int32_t* target = malloc(
-        (size_t)config->batch_size * (size_t)sequence * sizeof(int32_t)
-    );
+    size_t batch_values = 0;
+    size_t batch_bytes = 0;
+    if (!checked_size_multiply(
+            (size_t)config->batch_size, (size_t)sequence, &batch_values) ||
+        !checked_size_multiply(batch_values, sizeof(int32_t), &batch_bytes)) {
+        free(corpus);
+        return 0;
+    }
+
+    size_t blocks_bytes = 0;
+    size_t starts_bytes = 0;
+    if (!checked_size_multiply((size_t)block_count, sizeof(int), &blocks_bytes) ||
+        !checked_size_multiply((size_t)config->batch_size, sizeof(int), &starts_bytes)) {
+        free(corpus);
+        return 0;
+    }
+
+    int* blocks = malloc(blocks_bytes);
+    int* batch_starts = malloc(starts_bytes);
+    int32_t* input = malloc(batch_bytes);
+    int32_t* target = malloc(batch_bytes);
     GPTWorkspace* full_workspace = create_workspace(model, config->batch_size, sequence);
     if (blocks == NULL || batch_starts == NULL || input == NULL || target == NULL ||
         full_workspace == NULL) {
@@ -193,11 +229,11 @@ int gpt_train_file(
     }
 
     RandomState random = {config->seed == 0 ? 1u : config->seed};
-    int total_training_steps = 0;
+    uint64_t total_training_steps = 0;
 
     for (int epoch = 0; epoch < config->epochs; epoch++) {
         double epoch_loss = 0.0;
-        int epoch_steps = 0;
+        uint64_t epoch_samples = 0;
 
         if (config->steps_per_epoch > 0) {
             for (int step = 0; step < config->steps_per_epoch; step++) {
@@ -207,11 +243,14 @@ int gpt_train_file(
                 }
                 fill_batch(corpus, batch_starts, config->batch_size, sequence, input, target);
                 float loss = train_batch(model, input, target, full_workspace);
-                if (!isfinite(loss)) {
+                if (!isfinite(loss) || !gradients_are_finite(model)) {
                     goto training_failed;
                 }
 
                 float norm = config->grad_clip > 0.0f ? gradient_norm(model) : 0.0f;
+                if (config->grad_clip > 0.0f && !isfinite(norm)) {
+                    goto training_failed;
+                }
                 if (config->grad_clip > 0.0f && norm > config->grad_clip) {
                     scale_gradients(model, config->grad_clip / norm);
                 }
@@ -221,19 +260,22 @@ int gpt_train_file(
                     learning_rate *= (float)(model->optimizer_step + 1) /
                         (float)config->warmup_steps;
                 }
-                adamw_step(
+                if (!adamw_step(
                     model,
                     learning_rate,
                     config->weight_decay,
                     config->beta1,
                     config->beta2,
                     config->epsilon
-                );
+                )) {
+                    goto training_failed;
+                }
                 total_training_steps++;
-                epoch_steps++;
-                epoch_loss += loss;
-                if (config->log_every > 0 && total_training_steps % config->log_every == 0) {
-                    printf("Step %d, loss %f\n", total_training_steps, loss);
+                epoch_samples += (uint64_t)config->batch_size;
+                epoch_loss += (double)loss * (double)config->batch_size;
+                if (config->log_every > 0 && total_training_steps % (uint64_t)config->log_every == 0) {
+                    printf("Step %" PRIu64 ", loss %f\n", total_training_steps, loss);
+                    fflush(stdout);
                 }
             }
         } else {
@@ -260,11 +302,14 @@ int gpt_train_file(
                 if (workspace != full_workspace) {
                     free_workspace(model, workspace);
                 }
-                if (!isfinite(loss)) {
+                if (!isfinite(loss) || !gradients_are_finite(model)) {
                     goto training_failed;
                 }
 
                 float norm = config->grad_clip > 0.0f ? gradient_norm(model) : 0.0f;
+                if (config->grad_clip > 0.0f && !isfinite(norm)) {
+                    goto training_failed;
+                }
                 if (config->grad_clip > 0.0f && norm > config->grad_clip) {
                     scale_gradients(model, config->grad_clip / norm);
                 }
@@ -274,19 +319,22 @@ int gpt_train_file(
                     learning_rate *= (float)(model->optimizer_step + 1) /
                         (float)config->warmup_steps;
                 }
-                adamw_step(
+                if (!adamw_step(
                     model,
                     learning_rate,
                     config->weight_decay,
                     config->beta1,
                     config->beta2,
                     config->epsilon
-                );
+                )) {
+                    goto training_failed;
+                }
                 total_training_steps++;
-                epoch_steps++;
-                epoch_loss += loss;
-                if (config->log_every > 0 && total_training_steps % config->log_every == 0) {
-                    printf("Step %d, loss %f\n", total_training_steps, loss);
+                epoch_samples += (uint64_t)actual_batch;
+                epoch_loss += (double)loss * (double)actual_batch;
+                if (config->log_every > 0 && total_training_steps % (uint64_t)config->log_every == 0) {
+                    printf("Step %" PRIu64 ", loss %f\n", total_training_steps, loss);
+                    fflush(stdout);
                 }
             }
         }
@@ -294,8 +342,9 @@ int gpt_train_file(
         printf(
             "Epoch %d, loss %f\n",
             epoch + 1,
-            epoch_steps > 0 ? (float)(epoch_loss / (double)epoch_steps) : 0.0f
+            epoch_samples > 0 ? (float)(epoch_loss / (double)epoch_samples) : 0.0f
         );
+        fflush(stdout);
     }
 
     free(corpus);
@@ -343,6 +392,9 @@ static int sample_next_token(
         for (int i = 0; i < d; i++) {
             score += hidden[i] * embedding[i];
         }
+        if (!isfinite(score)) {
+            return -1;
+        }
         logits[token] = score;
         if (score > best_score) {
             best_score = score;
@@ -355,9 +407,13 @@ static int sample_next_token(
     }
 
     int candidate_count = top_k <= 0 || top_k > vocab ? vocab : top_k;
-    TokenScore* candidates = malloc((size_t)vocab * sizeof(TokenScore));
+    size_t candidate_bytes = 0;
+    if (!checked_size_multiply((size_t)vocab, sizeof(TokenScore), &candidate_bytes)) {
+        return -1;
+    }
+    TokenScore* candidates = malloc(candidate_bytes);
     if (candidates == NULL) {
-        return best_token;
+        return -1;
     }
     for (int token = 0; token < vocab; token++) {
         candidates[token].score = logits[token];
@@ -399,8 +455,9 @@ unsigned char* gpt_generate(
     int* output_length
 ) {
     if (model == NULL || tokenizer == NULL || prompt == NULL || prompt_length <= 0 ||
-        max_new_tokens < 0 || output_length == NULL ||
-        bpe_vocab_size(tokenizer) != model->vocab_size) {
+        max_new_tokens < 0 || output_length == NULL || !isfinite(temperature) ||
+        temperature < 0.0f || top_k < 0 || !parameters_are_finite(model) ||
+        !gpt_bind_tokenizer(model, tokenizer)) {
         return NULL;
     }
 
@@ -410,7 +467,11 @@ unsigned char* gpt_generate(
     }
 
     int capacity = prompt_tokens + max_new_tokens;
-    int32_t* tokens = malloc((size_t)capacity * sizeof(int32_t));
+    size_t token_bytes = 0;
+    if (!checked_size_multiply((size_t)capacity, sizeof(int32_t), &token_bytes)) {
+        return NULL;
+    }
+    int32_t* tokens = malloc(token_bytes);
     if (tokens == NULL || bpe_encode(tokenizer, prompt, prompt_length, tokens, prompt_tokens) != prompt_tokens) {
         free(tokens);
         return NULL;
@@ -438,6 +499,10 @@ unsigned char* gpt_generate(
             &random
         );
         free_workspace(model, workspace);
+        if (next < 0 || next >= model->vocab_size) {
+            free(tokens);
+            return NULL;
+        }
         tokens[count++] = next;
     }
 
@@ -459,7 +524,7 @@ unsigned char* gpt_generate(
 }
 
 int gpt_save(GPTModel* model, const char* path) {
-    if (model == NULL || path == NULL) {
+    if (model == NULL || path == NULL || !parameters_are_finite(model)) {
         return 0;
     }
     FILE* file = fopen(path, "wb");
@@ -467,7 +532,7 @@ int gpt_save(GPTModel* model, const char* path) {
         return 0;
     }
 
-    static const unsigned char magic[8] = {'N', 'N', 'G', 'P', 'T', '1', '\r', '\n'};
+    static const unsigned char magic[8] = {'N', 'N', 'G', 'P', 'T', '2', '\r', '\n'};
     int32_t config[6] = {
         model->vocab_size,
         model->context_length,
@@ -477,9 +542,11 @@ int gpt_save(GPTModel* model, const char* path) {
         model->hidden_dim
     };
     uint64_t step = model->optimizer_step;
+    uint64_t fingerprint = model->tokenizer_fingerprint;
     int valid = fwrite(magic, 1, sizeof(magic), file) == sizeof(magic) &&
         fwrite(config, sizeof(int32_t), 6, file) == 6 &&
-        fwrite(&step, sizeof(step), 1, file) == 1;
+        fwrite(&step, sizeof(step), 1, file) == 1 &&
+        fwrite(&fingerprint, sizeof(fingerprint), 1, file) == 1;
 
     for (int p = 0; valid && p < model->parameter_count; p++) {
         Parameter* parameter = model->parameters[p];
@@ -502,14 +569,22 @@ GPTModel* gpt_load(const char* path) {
         return NULL;
     }
 
-    static const unsigned char expected[8] = {'N', 'N', 'G', 'P', 'T', '1', '\r', '\n'};
+    static const unsigned char version1[8] = {'N', 'N', 'G', 'P', 'T', '1', '\r', '\n'};
+    static const unsigned char version2[8] = {'N', 'N', 'G', 'P', 'T', '2', '\r', '\n'};
     unsigned char magic[8];
     int32_t config[6];
     uint64_t step = 0;
-    if (fread(magic, 1, sizeof(magic), file) != sizeof(magic) ||
-        memcmp(magic, expected, sizeof(magic)) != 0 ||
+    uint64_t fingerprint = 0;
+    if (fread(magic, 1, sizeof(magic), file) != sizeof(magic)) {
+        fclose(file);
+        return NULL;
+    }
+    int is_version1 = memcmp(magic, version1, sizeof(magic)) == 0;
+    int is_version2 = memcmp(magic, version2, sizeof(magic)) == 0;
+    if ((!is_version1 && !is_version2) ||
         fread(config, sizeof(int32_t), 6, file) != 6 ||
-        fread(&step, sizeof(step), 1, file) != 1) {
+        fread(&step, sizeof(step), 1, file) != 1 ||
+        (is_version2 && fread(&fingerprint, sizeof(fingerprint), 1, file) != 1)) {
         fclose(file);
         return NULL;
     }
@@ -522,6 +597,7 @@ GPTModel* gpt_load(const char* path) {
         return NULL;
     }
     model->optimizer_step = step;
+    model->tokenizer_fingerprint = fingerprint;
 
     int valid = 1;
     for (int p = 0; valid && p < model->parameter_count; p++) {
@@ -530,10 +606,13 @@ GPTModel* gpt_load(const char* path) {
             fread(parameter->first_moment, sizeof(float), parameter->count, file) == parameter->count &&
             fread(parameter->second_moment, sizeof(float), parameter->count, file) == parameter->count;
     }
+    if (valid && (fgetc(file) != EOF || ferror(file))) {
+        valid = 0;
+    }
     if (fclose(file) != 0) {
         valid = 0;
     }
-    if (!valid) {
+    if (!valid || !parameters_are_finite(model)) {
         free_gpt_model(model);
         return NULL;
     }
@@ -548,6 +627,20 @@ void free_gpt_model(GPTModel* model) {
     if (model == NULL) {
         return;
     }
+
+    if (model->blocks != NULL) {
+        for (int layer = 0; layer < model->layers; layer++) {
+            GPTBlock* block = &model->blocks[layer];
+            block->rms_attention = NULL;
+            block->qkv = NULL;
+            block->attention_output = NULL;
+            block->rms_feed_forward = NULL;
+            block->feed_forward_gate = NULL;
+            block->feed_forward_value = NULL;
+            block->feed_forward_output = NULL;
+        }
+    }
+
     for (int p = 0; p < model->parameter_count; p++) {
         free_parameter(model->parameters[p]);
     }
