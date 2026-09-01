@@ -1,37 +1,30 @@
-from neuralnet import (
-    DataLoader,
-    Dataset,
-    F_RELU,
-    F_SOFTMAX,
-    LABEL,
-    Model,
-    RandomSampler,
-    TEXT,
-    train,
-)
+import neuralnet as nn
 
 
-class AnimalModel(Model):
+class AnimalModel(nn.Model):
     def __init__(self, input_size, output_size):
         super().__init__()
-        self.add_linear(input_size, 16, F_RELU)
-        self.add_linear(16, output_size, F_SOFTMAX)
+        self.add_linear(input_size, 16, nn.Activation.RELU)
+        self.add_linear(16, output_size, nn.Activation.SOFTMAX)
 
 
 if __name__ == '__main__':
-    dataset = Dataset().csv(
+    dataset = nn.Dataset().csv(
         'train.txt',
         x=[0],
         y=[1],
-        types={0: TEXT, 1: LABEL},
+        types={
+            0: nn.FieldType.TEXT,
+            1: nn.FieldType.LABEL,
+        },
     )
 
-    sampler = RandomSampler(dataset, seed=42)
-    loader = DataLoader(dataset, sampler, batch_size=16)
+    sampler = nn.RandomSampler(dataset, seed=42)
+    loader = nn.DataLoader(dataset, sampler, batch_size=16)
     model = AnimalModel(loader.input_size, loader.output_size)
 
     print('[+] Training started')
-    train(model, loader, 5000, 0.001)
+    nn.train(model, loader, 5000, 0.001)
 
     for animal in ['cat', 'spider', 'salmon']:
         prediction = model.forward(dataset.encode(animal))

@@ -1,41 +1,60 @@
 import ctypes
 from pathlib import Path
 
-F_RELU = 0
-F_SIGMOID = 1
-F_SELU = 2
-F_GELU = 3
-F_TANH = 4
-F_SOFTPLUS = 5
-F_SOFTMAX = 6
 
-FLOAT = 0
-INTEGER = 1
-TEXT = 2
-LABEL = 3
+class Activation:
+    RELU = 0
+    SIGMOID = 1
+    SELU = 2
+    GELU = 3
+    TANH = 4
+    SOFTPLUS = 5
+    SOFTMAX = 6
 
-BYTE = 0
 
-SEQUENTIAL = 0
-SHUFFLED = 1
-RANDOM = 2
+class FieldType:
+    FLOAT = 0
+    INTEGER = 1
+    TEXT = 2
+    LABEL = 3
+
+
+class Tokenizer:
+    BYTE = 0
+
+
+class SamplingStrategy:
+    SEQUENTIAL = 0
+    SHUFFLED = 1
+    RANDOM = 2
+
+
+# Backward-compatible aliases for existing code. New user code should prefer
+# the grouped namespaces above through `import neuralnet as nn`.
+F_RELU = Activation.RELU
+F_SIGMOID = Activation.SIGMOID
+F_SELU = Activation.SELU
+F_GELU = Activation.GELU
+F_TANH = Activation.TANH
+F_SOFTPLUS = Activation.SOFTPLUS
+F_SOFTMAX = Activation.SOFTMAX
+
+FLOAT = FieldType.FLOAT
+INTEGER = FieldType.INTEGER
+TEXT = FieldType.TEXT
+LABEL = FieldType.LABEL
+
+BYTE = Tokenizer.BYTE
+
+SEQUENTIAL = SamplingStrategy.SEQUENTIAL
+SHUFFLED = SamplingStrategy.SHUFFLED
+RANDOM = SamplingStrategy.RANDOM
 
 __all__ = [
-    'F_RELU',
-    'F_SIGMOID',
-    'F_SELU',
-    'F_GELU',
-    'F_TANH',
-    'F_SOFTPLUS',
-    'F_SOFTMAX',
-    'FLOAT',
-    'INTEGER',
-    'TEXT',
-    'LABEL',
-    'BYTE',
-    'SEQUENTIAL',
-    'SHUFFLED',
-    'RANDOM',
+    'Activation',
+    'FieldType',
+    'Tokenizer',
+    'SamplingStrategy',
     'Model',
     'Dataset',
     'Sampler',
