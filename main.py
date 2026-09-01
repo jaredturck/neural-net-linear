@@ -5,7 +5,7 @@ if __name__ == '__main__':
     tokenizer = nn.Tokenizer.train('train.txt', vocab_size=320)
 
     model = nn.GPT(
-        tokenizer,
+        tokenizer.vocab_size,
         context_length=32,
         embedding_dim=64,
         heads=4,
