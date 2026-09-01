@@ -1,6 +1,10 @@
-A neural network built completely from scratch in C, with a small Python wrapper for training and inference.
+A neural network built completely from scratch in C, with a small Python `ctypes` entry point.
 
-The Python entry point keeps model structure explicit while all computation stays in C:
+All neural-network computation, dataset parsing, sampling, batching, and training logic is implemented in C using only the ISO C standard library.
+
+## Model API
+
+Models are explicit collections of layers:
 
 ```python
 class AnimalModel(Model):
@@ -10,15 +14,47 @@ class AnimalModel(Model):
         self.add_linear(16, output_size, F_SOFTMAX)
 ```
 
-Datasets use the same explicit style:
+## Table datasets
+
+CSV-style files can choose any X/Y columns and describe their field types. Text widths are inferred automatically unless a fixed width is supplied.
 
 ```python
-dataset = Dataset()
-dataset.load_animal('train.txt')
+dataset = Dataset().csv(
+    'train.txt',
+    x=[0],
+    y=[1],
+    types={0: TEXT, 1: LABEL},
+)
 
-model = AnimalModel(dataset.input_size, dataset.output_size)
-train(model, dataset, 5000, 0.001)
+sampler = RandomSampler(dataset, seed=42)
+loader = DataLoader(dataset, sampler, batch_size=16)
+
+model = AnimalModel(loader.input_size, loader.output_size)
+train(model, loader, 5000, 0.001)
 ```
+
+Selected fields may be `FLOAT`, `INTEGER`, `TEXT`, or `LABEL`. Multiple X or Y columns are supported, along with configurable delimiters, headers, and optional fixed widths for text fields.
+
+## Raw text datasets
+
+Raw text is stored as a token stream. Sampling is separate from parsing, so next-token windows do not need to be materialized or advanced one token at a time.
+
+```python
+corpus = Dataset().text('corpus.txt')
+
+sampler = TokenSampler(
+    corpus,
+    sequence_length=128,
+    strategy=SHUFFLED,
+    seed=42,
+)
+
+loader = DataLoader(corpus, sampler, batch_size=16)
+```
+
+`TokenSampler` supports sequential non-overlapping blocks, shuffled blocks, and random offsets with replacement. In every token window, X is the sampled sequence and Y is the same sequence shifted by one token for next-token prediction.
+
+The current dense-network trainer still uses softmax + categorical cross entropy. The raw-text loader is intended to feed the transformer/embedding training path as those model components are added.
 
 Build the C library from `nn/`, then run:
 

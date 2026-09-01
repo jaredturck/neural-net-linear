@@ -1,35 +1,17 @@
-Compile the C code with gcc:
+Compile with gcc:
 
 ```bash
 mkdir -p bin
-gcc -O2 activation.c backprop.c datasets.c layers.c loss.c optimizers.c nn.c main.c -lm -o bin/main
-gcc -O2 -fPIC -shared activation.c backprop.c datasets.c layers.c loss.c optimizers.c nn.c -lm -o bin/main.so
+gcc -std=c11 -O2 activation.c backprop.c dataloader.c datasets.c layers.c loss.c nn.c optimizers.c samplers.c main.c -lm -o bin/main
+gcc -std=c11 -O2 -fPIC -shared activation.c backprop.c dataloader.c datasets.c layers.c loss.c nn.c optimizers.c samplers.c -lm -o bin/main.so
 ```
 
-Public model API:
+The data pipeline is split into three responsibilities:
 
-```c
-#include "nn.h"
+- `Dataset`: parses table or raw-text sources and owns encoded data.
+- `Sampler`: selects rows or token offsets in sequential, shuffled, or random order.
+- `DataLoader`: materializes sampled items into contiguous mini-batches.
 
-Model* model = create_model();
-add_linear(model, 18, 32, F_RELU);
-add_linear(model, 32, 12, F_SOFTMAX);
+The dense trainer consumes `DataLoader` batches and accumulates gradients across the full mini-batch before one SGD update.
 
-train(model, train_x, train_y, dataset_size, 5000, 0.001);
-forward(model, input, output);
-
-free_model(model);
-```
-
-Dataset preparation is also implemented in C:
-
-```c
-#include "datasets.h"
-
-Dataset* dataset = create_dataset();
-load_animal_dataset(dataset, "../train.txt");
-train_dataset(model, dataset, 5000, 0.001);
-free_dataset(dataset);
-```
-
-`Model` and `Dataset` are opaque. The Python entry point only loads this API with `ctypes`.
+The CPU implementation depends only on the ISO C standard library. Neural-network, parsing, sampling, batching, and optimization algorithms are implemented in this project.
