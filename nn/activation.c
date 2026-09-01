@@ -1,9 +1,54 @@
 #include "activation.h"
 #include <math.h>
+#include <stddef.h>
 
 const float LAMBDA = 1.0507;
 const float ALPHA = 1.67326;
 const float ROOT2 = 1.4142135623730951;
+
+ActivationFunction* get_activation_function(ActivationType activation_type) {
+    switch (activation_type) {
+        case F_RELU:
+            return relu;
+        case F_SIGMOID:
+            return sigmoid;
+        case F_SELU:
+            return selu;
+        case F_GELU:
+            return gelu;
+        case F_TANH:
+            return array_tanh;
+        case F_SOFTPLUS:
+            return softplus;
+        case F_SOFTMAX:
+            return NULL;
+    }
+    return NULL;
+}
+
+float activation_derivative(ActivationType activation_type, float x) {
+    switch (activation_type) {
+        case F_RELU:
+            return (x > 0) ? 1.0 : 0.0;
+        case F_SIGMOID: {
+            float y = sigmoid(x);
+            return y * (1 - y);
+        }
+        case F_SELU:
+            return (x > 0) ? LAMBDA : LAMBDA * ALPHA * expf(x);
+        case F_GELU:
+            return 0.5 * (1 + erff(x / ROOT2)) + (x * expf(-0.5 * x * x) / 2.5066282746310002);
+        case F_TANH: {
+            float y = tanhf(x);
+            return 1 - y * y;
+        }
+        case F_SOFTPLUS:
+            return sigmoid(x);
+        case F_SOFTMAX:
+            return 0.0;
+    }
+    return 0.0;
+}
 
 float array_max(float x_array[], int array_size) {
     // Return largest number in an array

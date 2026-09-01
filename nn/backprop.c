@@ -1,20 +1,18 @@
+#include "activation.h"
 #include "layers.h"
 
 void compute_softmax_gradients(Layer* layer, float* y_array) {
-    // Compute graidents for softmax activation with cross entropy loss
-
-    // Deltas
+    // Compute gradients for softmax activation with cross entropy loss
     for (int i=0; i<layer->output_neurons; i++) {
         layer->deltas[i] = layer->backprop_cache->logits[i] - y_array[i];
+        layer->bias_gradients[i] = layer->deltas[i];
     }
 
-    // Compute gradients
     for (int i=0; i<layer->output_neurons; i++) {
         for (int j=0; j<layer->input_neurons; j++) {
             layer->gradients[i][j] = layer->deltas[i] * layer->backprop_cache->x_array[j];
         }
     }
-    layer->bias_gradients = layer->deltas;
 
     for (int i=0; i<layer->input_neurons; i++) {
         float total = 0.0;
@@ -25,26 +23,18 @@ void compute_softmax_gradients(Layer* layer, float* y_array) {
     }
 }
 
-void compute_relu_gradients(Layer* layer, float* deltas) {
-    // Compute dragients for relu activation
-
-    // calculate mask
+void compute_layer_gradients(Layer* layer, float* deltas) {
     for (int i=0; i<layer->output_neurons; i++) {
-        layer->mask[i] = (int)(layer->backprop_cache->output[i] > 0);
+        float derivative = activation_derivative(layer->activation_type, layer->backprop_cache->output[i]);
+        layer->deltas[i] = deltas[i] * derivative;
+        layer->bias_gradients[i] = layer->deltas[i];
     }
 
-    // Compute deltas
-    for (int i=0; i<layer->output_neurons; i++) {
-        layer->deltas[i] = deltas[i] * layer->mask[i];
-    }
-
-    // Compute gradients
     for (int i=0; i<layer->output_neurons; i++) {
         for (int j=0; j<layer->input_neurons; j++) {
             layer->gradients[i][j] = layer->deltas[i] * layer->backprop_cache->x_array[j];
         }
     }
-    layer->bias_gradients = layer->deltas;
 
     for (int i=0; i<layer->input_neurons; i++) {
         float total = 0.0;
@@ -53,5 +43,4 @@ void compute_relu_gradients(Layer* layer, float* deltas) {
         }
         layer->layer_deltas[i] = total;
     }
-
 }
