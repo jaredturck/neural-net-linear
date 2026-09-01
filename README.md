@@ -17,6 +17,8 @@ gcc -std=c11 -O3 -fPIC -shared \
     nn/samplers.c \
     nn/tensor.c \
     nn/tokenizer.c \
+    nn/transformer_math.c \
+    nn/transformer_runtime.c \
     nn/transformer.c \
     -lm \
     -o nn/bin/main.so
