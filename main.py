@@ -5,7 +5,7 @@ if __name__ == '__main__':
     tokenizer = nn.Tokenizer.train('train.txt', vocab_size=320)
 
     model = nn.GPT(
-        tokenizer.vocab_size,
+        tokenizer,
         context_length=32,
         embedding_dim=64,
         heads=4,
@@ -19,7 +19,7 @@ if __name__ == '__main__':
         weight_decay=0.01,
     )
 
-    print('[+] Training GPT')
+    print('[+] Training GPT', flush=True)
     model.train(
         tokenizer,
         'train.txt',
