@@ -38,6 +38,8 @@ int gpt_embedding_dim(GPTModel* model);
 int gpt_head_count(GPTModel* model);
 int gpt_layer_count(GPTModel* model);
 int gpt_hidden_dim(GPTModel* model);
+uint64_t gpt_tokenizer_fingerprint(GPTModel* model);
+int gpt_bind_tokenizer(GPTModel* model, BPETokenizer* tokenizer);
 
 int gpt_train_file(
     GPTModel* model,
