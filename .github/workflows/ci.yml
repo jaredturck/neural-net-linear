@@ -1,0 +1,62 @@
+name: CPU reference tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build shared library
+        run: |
+          mkdir -p nn/bin
+          gcc -std=c11 -Wall -Wextra -Werror -O3 -fPIC -shared \
+            nn/activation.c \
+            nn/backprop.c \
+            nn/dataloader.c \
+            nn/datasets.c \
+            nn/layers.c \
+            nn/loss.c \
+            nn/nn.c \
+            nn/optimizers.c \
+            nn/samplers.c \
+            nn/tensor.c \
+            nn/tokenizer.c \
+            nn/transformer_math.c \
+            nn/transformer_runtime.c \
+            nn/transformer.c \
+            -lm \
+            -o nn/bin/main.so
+
+      - name: Python syntax
+        run: python -m py_compile neuralnet.py main.py
+
+      - name: Build C reference tests
+        run: |
+          COMMON="nn/tensor.c nn/tokenizer.c nn/transformer_math.c nn/transformer_runtime.c nn/transformer.c"
+          gcc -std=c11 -Wall -Wextra -Werror -O2 -Inn tests/tokenizer.c nn/tokenizer.c -lm -o /tmp/tokenizer-test
+          gcc -std=c11 -Wall -Wextra -Werror -O2 -Inn tests/transformer_gradients.c $COMMON -lm -o /tmp/gradient-test
+          gcc -std=c11 -Wall -Wextra -Werror -O2 -Inn tests/transformer_batches.c $COMMON -lm -o /tmp/batch-test
+          gcc -std=c11 -Wall -Wextra -Werror -O2 -Inn tests/transformer_edges.c $COMMON -lm -o /tmp/edge-test
+
+      - name: Run C reference tests
+        run: |
+          /tmp/tokenizer-test
+          /tmp/gradient-test
+          /tmp/batch-test
+          /tmp/edge-test
+
+      - name: Sanitizer gradient check
+        run: |
+          COMMON="nn/tensor.c nn/tokenizer.c nn/transformer_math.c nn/transformer_runtime.c nn/transformer.c"
+          gcc -std=c11 -Wall -Wextra -Werror -O1 -g \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -Inn \
+            tests/transformer_gradients.c $COMMON -lm -o /tmp/gradient-sanitized
+          ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 /tmp/gradient-sanitized
+
+      - name: End-to-end GPT example
+        run: python main.py
