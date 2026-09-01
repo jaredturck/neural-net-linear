@@ -7,7 +7,7 @@
 #define ANIMAL_OUTPUT_SIZE 12
 #define LINE_SIZE 128
 
-static const char* labels[] = {
+static const char* animal_labels[] = {
     "amphibian",
     "arachnid",
     "bird",
@@ -28,23 +28,40 @@ struct Dataset {
     int size;
     int input_size;
     int output_size;
+    const char** labels;
 };
 
-static int label_index(const char* label) {
-    for (int i=0; i<ANIMAL_OUTPUT_SIZE; i++) {
-        if (strcmp(label, labels[i]) == 0) {
+static void clear_dataset(Dataset* dataset) {
+    free(dataset->train_x);
+    free(dataset->train_y);
+
+    dataset->train_x = NULL;
+    dataset->train_y = NULL;
+    dataset->size = 0;
+    dataset->input_size = 0;
+    dataset->output_size = 0;
+    dataset->labels = NULL;
+}
+
+static int label_index(Dataset* dataset, const char* label) {
+    for (int i=0; i<dataset->output_size; i++) {
+        if (strcmp(label, dataset->labels[i]) == 0) {
             return i;
         }
     }
-    return 0;
+    return -1;
 }
 
-void dataset_tokenize(const char* text, float* output, int input_size) {
-    for (int i=0; i<input_size; i++) {
+Dataset* create_dataset(void) {
+    return calloc(1, sizeof(Dataset));
+}
+
+void dataset_tokenize(Dataset* dataset, const char* text, float* output) {
+    for (int i=0; i<dataset->input_size; i++) {
         output[i] = 0.0;
     }
 
-    for (int i=0; text[i] != '\0' && i<input_size; i++) {
+    for (int i=0; text[i] != '\0' && i<dataset->input_size; i++) {
         if (text[i] == ' ') {
             output[i] = 26.0;
         } else {
@@ -53,8 +70,14 @@ void dataset_tokenize(const char* text, float* output, int input_size) {
     }
 }
 
-Dataset* load_animal_dataset(const char* path) {
+int load_animal_dataset(Dataset* dataset, const char* path) {
     FILE* file = fopen(path, "r");
+    if (file == NULL) {
+        return 0;
+    }
+
+    clear_dataset(dataset);
+
     char line[LINE_SIZE];
     int size = 0;
 
@@ -63,32 +86,51 @@ Dataset* load_animal_dataset(const char* path) {
     }
     rewind(file);
 
-    Dataset* dataset = malloc(sizeof(Dataset));
     dataset->size = size;
     dataset->input_size = ANIMAL_INPUT_SIZE;
     dataset->output_size = ANIMAL_OUTPUT_SIZE;
-    dataset->train_x = calloc(size * ANIMAL_INPUT_SIZE, sizeof(float));
-    dataset->train_y = calloc(size * ANIMAL_OUTPUT_SIZE, sizeof(float));
+    dataset->labels = animal_labels;
+    dataset->train_x = calloc(size * dataset->input_size, sizeof(float));
+    dataset->train_y = calloc(size * dataset->output_size, sizeof(float));
+
+    if (dataset->train_x == NULL || dataset->train_y == NULL) {
+        fclose(file);
+        clear_dataset(dataset);
+        return 0;
+    }
 
     int row = 0;
     while (fgets(line, LINE_SIZE, file) != NULL) {
         char* comma = strchr(line, ',');
+        if (comma == NULL) {
+            fclose(file);
+            clear_dataset(dataset);
+            return 0;
+        }
+
         *comma = '\0';
 
         char* animal = line;
         char* family = comma + 1;
         family[strcspn(family, "\r\n")] = '\0';
 
-        float* x = dataset->train_x + row * ANIMAL_INPUT_SIZE;
-        float* y = dataset->train_y + row * ANIMAL_OUTPUT_SIZE;
+        int family_index = label_index(dataset, family);
+        if (family_index < 0) {
+            fclose(file);
+            clear_dataset(dataset);
+            return 0;
+        }
 
-        dataset_tokenize(animal, x, ANIMAL_INPUT_SIZE);
-        y[label_index(family)] = 1.0;
+        float* x = dataset->train_x + row * dataset->input_size;
+        float* y = dataset->train_y + row * dataset->output_size;
+
+        dataset_tokenize(dataset, animal, x);
+        y[family_index] = 1.0;
         row++;
     }
 
     fclose(file);
-    return dataset;
+    return 1;
 }
 
 int dataset_size(Dataset* dataset) {
@@ -111,11 +153,11 @@ float* dataset_train_y(Dataset* dataset) {
     return dataset->train_y;
 }
 
-int dataset_argmax(float* values, int size) {
+int dataset_argmax(Dataset* dataset, float* values) {
     int max_index = 0;
     float max_value = values[0];
 
-    for (int i=1; i<size; i++) {
+    for (int i=1; i<dataset->output_size; i++) {
         if (values[i] > max_value) {
             max_value = values[i];
             max_index = i;
@@ -124,12 +166,14 @@ int dataset_argmax(float* values, int size) {
     return max_index;
 }
 
-const char* dataset_label(int index) {
-    return labels[index];
+const char* dataset_label(Dataset* dataset, int index) {
+    if (index < 0 || index >= dataset->output_size) {
+        return NULL;
+    }
+    return dataset->labels[index];
 }
 
 void free_dataset(Dataset* dataset) {
-    free(dataset->train_x);
-    free(dataset->train_y);
+    clear_dataset(dataset);
     free(dataset);
 }

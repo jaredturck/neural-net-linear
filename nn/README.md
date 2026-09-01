@@ -11,9 +11,9 @@ Public model API:
 ```c
 #include "nn.h"
 
-Model* model = create_model(18);
-add_linear(model, 32, F_RELU);
-add_linear(model, 12, F_SOFTMAX);
+Model* model = create_model();
+add_linear(model, 18, 32, F_RELU);
+add_linear(model, 32, 12, F_SOFTMAX);
 
 train(model, train_x, train_y, dataset_size, 5000, 0.001);
 forward(model, input, output);
@@ -26,8 +26,9 @@ Dataset preparation is also implemented in C:
 ```c
 #include "datasets.h"
 
-Dataset* dataset = load_animal_dataset("../train.txt");
-train(model, dataset_train_x(dataset), dataset_train_y(dataset), dataset_size(dataset), 5000, 0.001);
+Dataset* dataset = create_dataset();
+load_animal_dataset(dataset, "../train.txt");
+train_dataset(model, dataset, 5000, 0.001);
 free_dataset(dataset);
 ```
 

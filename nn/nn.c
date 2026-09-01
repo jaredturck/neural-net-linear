@@ -43,32 +43,45 @@ static void optimizer_step(Model* model, float learning_rate) {
     }
 }
 
-Model* create_model(int input_size) {
+Model* create_model(void) {
     srand((unsigned) time(NULL));
 
     Model* model = malloc(sizeof(Model));
     model->layer_capacity = 4;
     model->layers = malloc(model->layer_capacity * sizeof(Layer*));
     model->layer_count = 0;
-    model->input_size = input_size;
-    model->output_size = input_size;
+    model->input_size = 0;
+    model->output_size = 0;
 
     return model;
 }
 
-void add_linear(Model* model, int output_size, ActivationType activation_type) {
+int add_linear(Model* model, int input_size, int output_size, ActivationType activation_type) {
+    if (input_size <= 0 || output_size <= 0) {
+        return 0;
+    }
+
+    if (model->layer_count > 0 && input_size != model->output_size) {
+        return 0;
+    }
+
     if (model->layer_count == model->layer_capacity) {
         model->layer_capacity *= 2;
         model->layers = realloc(model->layers, model->layer_capacity * sizeof(Layer*));
     }
 
-    int input_size = model->output_size;
     ActivationFunction* activation_function = get_activation_function(activation_type);
     Layer* layer = create_layer(input_size, output_size, activation_function, activation_type);
+
+    if (model->layer_count == 0) {
+        model->input_size = input_size;
+    }
 
     model->layers[model->layer_count] = layer;
     model->layer_count++;
     model->output_size = output_size;
+
+    return 1;
 }
 
 void train(Model* model, float* train_x, float* train_y, int dataset_size, int epochs, float learning_rate) {
@@ -94,6 +107,17 @@ void train(Model* model, float* train_x, float* train_y, int dataset_size, int e
             return;
         }
     }
+}
+
+void train_dataset(Model* model, Dataset* dataset, int epochs, float learning_rate) {
+    train(
+        model,
+        dataset_train_x(dataset),
+        dataset_train_y(dataset),
+        dataset_size(dataset),
+        epochs,
+        learning_rate
+    );
 }
 
 void forward(Model* model, float* input, float* output) {
