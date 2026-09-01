@@ -5,6 +5,14 @@
 #include "tensor.h"
 #include "transformer_internal.h"
 
+static int checked_size_multiply(size_t left, size_t right, size_t* output) {
+    if (output == NULL || (right != 0 && left > SIZE_MAX / right)) {
+        return 0;
+    }
+    *output = left * right;
+    return 1;
+}
+
 static int allocate_float(float** pointer, size_t count) {
     if (count == 0 || count > SIZE_MAX / sizeof(float)) {
         return 0;
@@ -24,13 +32,23 @@ GPTWorkspace* create_workspace(GPTModel* model, int batch, int sequence) {
     }
     workspace->batch = batch;
     workspace->sequence = sequence;
-    workspace->rows = (size_t)batch * (size_t)sequence;
 
-    size_t rows = workspace->rows;
-    size_t state_count = (size_t)(model->layers + 1) * rows * (size_t)model->embedding_dim;
-    size_t row_embedding = rows * (size_t)model->embedding_dim;
-    size_t row_qkv = rows * (size_t)(3 * model->embedding_dim);
-    size_t row_hidden = rows * (size_t)model->hidden_dim;
+    size_t rows = 0;
+    size_t row_embedding = 0;
+    size_t row_qkv = 0;
+    size_t row_hidden = 0;
+    size_t state_count = 0;
+    size_t state_rows = 0;
+    if (!checked_size_multiply((size_t)batch, (size_t)sequence, &rows) ||
+        !checked_size_multiply(rows, (size_t)model->embedding_dim, &row_embedding) ||
+        !checked_size_multiply(rows, (size_t)(3 * model->embedding_dim), &row_qkv) ||
+        !checked_size_multiply(rows, (size_t)model->hidden_dim, &row_hidden) ||
+        !checked_size_multiply((size_t)(model->layers + 1), rows, &state_rows) ||
+        !checked_size_multiply(state_rows, (size_t)model->embedding_dim, &state_count)) {
+        free(workspace);
+        return NULL;
+    }
+    workspace->rows = rows;
 
     workspace->blocks = calloc((size_t)model->layers, sizeof(BlockCache));
     if (workspace->blocks == NULL ||
@@ -51,8 +69,13 @@ GPTWorkspace* create_workspace(GPTModel* model, int batch, int sequence) {
 
     for (int layer = 0; layer < model->layers; layer++) {
         BlockCache* cache = &workspace->blocks[layer];
-        size_t probabilities = (size_t)batch * (size_t)model->heads *
-            (size_t)sequence * (size_t)sequence;
+        size_t probabilities = 0;
+        size_t attention_rows = 0;
+        if (!checked_size_multiply((size_t)batch, (size_t)model->heads, &attention_rows) ||
+            !checked_size_multiply(attention_rows, (size_t)sequence, &attention_rows) ||
+            !checked_size_multiply(attention_rows, (size_t)sequence, &probabilities)) {
+            goto fail;
+        }
         if (!allocate_float(&cache->norm_attention, row_embedding) ||
             !allocate_float(&cache->qkv, row_qkv) ||
             !allocate_float(&cache->attention_probabilities, probabilities) ||
