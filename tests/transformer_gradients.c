@@ -39,7 +39,7 @@ static void check_one(
     assert(relative_error < tolerance || fabsf(analytic - numeric) < 2e-3f);
 }
 
-int main(void) {
+static void check_single_block(void) {
     GPTModel* model = create_gpt_model(16, 3, 4, 1, 1, 8, 123);
     assert(model != NULL);
     GPTWorkspace* workspace = create_workspace(model, 2, 3);
@@ -60,6 +60,30 @@ int main(void) {
 
     free_workspace(model, workspace);
     free_gpt_model(model);
+}
+
+static void check_stacked_blocks(void) {
+    GPTModel* model = create_gpt_model(16, 3, 4, 1, 2, 8, 123);
+    assert(model != NULL);
+    GPTWorkspace* workspace = create_workspace(model, 2, 3);
+    assert(workspace != NULL);
+    const int32_t input[6] = {1, 2, 3, 4, 5, 6};
+    const int32_t target[6] = {2, 3, 4, 5, 6, 7};
+
+    /* Check both blocks plus the final norm to catch cross-block residual bugs. */
+    check_one(model, workspace, input, target, 2, 7, 0.15f);
+    check_one(model, workspace, input, target, 7, 13, 0.15f);
+    check_one(model, workspace, input, target, 9, 7, 0.15f);
+    check_one(model, workspace, input, target, 14, 13, 0.15f);
+    check_one(model, workspace, input, target, 15, 3, 0.08f);
+
+    free_workspace(model, workspace);
+    free_gpt_model(model);
+}
+
+int main(void) {
+    check_single_block();
+    check_stacked_blocks();
     puts("gradient checks ok");
     return 0;
 }
