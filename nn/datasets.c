@@ -12,9 +12,15 @@ typedef struct {
 typedef struct {
     int column;
     DataType type;
+    int requested_width;
+    int inferred_width;
+    int text_length;
     int width;
     int offset;
     LabelMap labels;
+    unsigned char observed[256];
+    unsigned short token_ids[256];
+    int vocab_size;
 } FieldSpec;
 
 struct Dataset {
@@ -46,36 +52,37 @@ static char* copy_string(const char* value) {
 }
 
 static void clear_label_map(LabelMap* map) {
-    for (int i=0; i<map->count; i++) {
+    for (int i = 0; i < map->count; i++) {
         free(map->values[i]);
     }
     free(map->values);
-    map->values = NULL;
-    map->count = 0;
-    map->capacity = 0;
+    memset(map, 0, sizeof(*map));
 }
 
 static void clear_fields(FieldSpec* fields, int count) {
     if (fields == NULL) {
         return;
     }
-    for (int i=0; i<count; i++) {
+    for (int i = 0; i < count; i++) {
         clear_label_map(&fields[i].labels);
     }
     free(fields);
 }
 
 static void clear_dataset(Dataset* dataset) {
+    if (dataset == NULL) {
+        return;
+    }
     free(dataset->x);
     free(dataset->y);
     free(dataset->tokens);
     clear_fields(dataset->x_fields, dataset->x_field_count);
     clear_fields(dataset->y_fields, dataset->y_field_count);
-    memset(dataset, 0, sizeof(Dataset));
+    memset(dataset, 0, sizeof(*dataset));
 }
 
 static int label_index(LabelMap* map, const char* value, int add) {
-    for (int i=0; i<map->count; i++) {
+    for (int i = 0; i < map->count; i++) {
         if (strcmp(map->values[i], value) == 0) {
             return i;
         }
@@ -142,6 +149,7 @@ static char* read_line(FILE* file) {
 static int split_delimited(char* line, char delimiter, char*** output_fields) {
     int capacity = 8;
     int count = 0;
+    int in_quotes = 0;
     char** fields = malloc((size_t)capacity * sizeof(char*));
     if (fields == NULL) {
         return -1;
@@ -150,7 +158,6 @@ static int split_delimited(char* line, char delimiter, char*** output_fields) {
     char* read = line;
     char* write = line;
     char* field_start = write;
-    int in_quotes = 0;
 
     for (;;) {
         char ch = *read++;
@@ -210,14 +217,14 @@ static FieldSpec* create_fields(
         return NULL;
     }
 
-    for (int i=0; i<count; i++) {
+    for (int i = 0; i < count; i++) {
         fields[i].column = columns[i];
         fields[i].type = types[i];
-        fields[i].width = widths == NULL ? 0 : widths[i];
+        fields[i].requested_width = widths == NULL ? 0 : widths[i];
         if (fields[i].type != DATA_TEXT) {
-            fields[i].width = 1;
+            fields[i].requested_width = 1;
         }
-        if (fields[i].column < 0 || fields[i].width < 0) {
+        if (fields[i].column < 0 || fields[i].requested_width < 0) {
             clear_fields(fields, count);
             return NULL;
         }
@@ -227,12 +234,12 @@ static FieldSpec* create_fields(
 
 static int max_selected_column(Dataset* dataset) {
     int maximum = -1;
-    for (int i=0; i<dataset->x_field_count; i++) {
+    for (int i = 0; i < dataset->x_field_count; i++) {
         if (dataset->x_fields[i].column > maximum) {
             maximum = dataset->x_fields[i].column;
         }
     }
-    for (int i=0; i<dataset->y_field_count; i++) {
+    for (int i = 0; i < dataset->y_field_count; i++) {
         if (dataset->y_fields[i].column > maximum) {
             maximum = dataset->y_fields[i].column;
         }
@@ -241,44 +248,73 @@ static int max_selected_column(Dataset* dataset) {
 }
 
 static int scan_fields(FieldSpec* fields, int count, char** columns, int column_count) {
-    for (int i=0; i<count; i++) {
+    for (int i = 0; i < count; i++) {
         FieldSpec* field = &fields[i];
         if (field->column >= column_count) {
             return 0;
         }
-        if (field->type == DATA_LABEL && label_index(&field->labels, columns[field->column], 1) < 0) {
+
+        const char* value = columns[field->column];
+        if (field->type == DATA_LABEL && label_index(&field->labels, value, 1) < 0) {
             return 0;
         }
-        if (field->type == DATA_TEXT && field->width == 0) {
-            int length = (int)strlen(columns[field->column]);
-            if (length > field->offset) {
-                field->offset = length;
+
+        if (field->type == DATA_TEXT) {
+            int length = (int)strlen(value);
+            if (field->requested_width == 0 && length > field->inferred_width) {
+                field->inferred_width = length;
+            }
+            for (const unsigned char* ch = (const unsigned char*)value; *ch != '\0'; ch++) {
+                field->observed[*ch] = 1;
             }
         }
     }
     return 1;
 }
 
-static int calculate_layout(FieldSpec* fields, int count) {
+static int finalize_layout(FieldSpec* fields, int count, int* max_vocab_size) {
     int offset = 0;
-    for (int i=0; i<count; i++) {
-        int inferred_text_width = fields[i].type == DATA_TEXT && fields[i].width == 0 ? fields[i].offset : fields[i].width;
-        fields[i].offset = offset;
-        if (fields[i].type == DATA_LABEL) {
-            fields[i].width = fields[i].labels.count;
-        } else if (fields[i].type == DATA_TEXT) {
-            fields[i].width = inferred_text_width;
+
+    for (int i = 0; i < count; i++) {
+        FieldSpec* field = &fields[i];
+        field->offset = offset;
+
+        if (field->type == DATA_LABEL) {
+            field->width = field->labels.count;
+        } else if (field->type == DATA_TEXT) {
+            field->text_length = field->requested_width > 0
+                ? field->requested_width
+                : field->inferred_width;
+
+            int next_token_id = 1;
+            for (int byte = 0; byte < 256; byte++) {
+                if (field->observed[byte]) {
+                    field->token_ids[byte] = (unsigned short)next_token_id++;
+                }
+            }
+
+            /* Index 0 is reserved for characters not present in the fitted field vocabulary. */
+            field->vocab_size = next_token_id;
+            field->width = field->text_length * field->vocab_size;
+            if (field->vocab_size > *max_vocab_size) {
+                *max_vocab_size = field->vocab_size;
+            }
+        } else {
+            field->width = 1;
         }
-        if (fields[i].width <= 0) {
+
+        if (field->width <= 0) {
             return -1;
         }
-        offset += fields[i].width;
+        offset += field->width;
     }
+
     return offset;
 }
 
 static int encode_field(FieldSpec* field, const char* value, float* output) {
     char* end = NULL;
+
     switch (field->type) {
         case DATA_FLOAT: {
             float parsed = strtof(value, &end);
@@ -296,16 +332,22 @@ static int encode_field(FieldSpec* field, const char* value, float* output) {
             output[0] = (float)parsed;
             return 1;
         }
-        case DATA_TEXT:
-            for (int i=0; i<field->width; i++) {
+        case DATA_TEXT: {
+            for (int i = 0; i < field->width; i++) {
                 output[i] = 0.0f;
             }
-            for (int i=0; value[i] != '\0' && i<field->width; i++) {
-                output[i] = (float)((unsigned char)value[i] + 1u) / 256.0f;
+
+            for (int position = 0;
+                 value[position] != '\0' && position < field->text_length;
+                 position++) {
+                unsigned short token_id = field->token_ids[(unsigned char)value[position]];
+                int token_index = token_id == 0 ? 0 : (int)token_id;
+                output[position * field->vocab_size + token_index] = 1.0f;
             }
             return 1;
+        }
         case DATA_LABEL: {
-            for (int i=0; i<field->width; i++) {
+            for (int i = 0; i < field->width; i++) {
                 output[i] = 0.0f;
             }
             int index = label_index(&field->labels, value, 0);
@@ -316,13 +358,21 @@ static int encode_field(FieldSpec* field, const char* value, float* output) {
             return 1;
         }
     }
+
     return 0;
 }
 
-static int encode_fields(FieldSpec* fields, int count, char** columns, int column_count, float* output) {
-    for (int i=0; i<count; i++) {
+static int encode_fields(
+    FieldSpec* fields,
+    int count,
+    char** columns,
+    int column_count,
+    float* output
+) {
+    for (int i = 0; i < count; i++) {
         FieldSpec* field = &fields[i];
-        if (field->column >= column_count || !encode_field(field, columns[field->column], output + field->offset)) {
+        if (field->column >= column_count ||
+            !encode_field(field, columns[field->column], output + field->offset)) {
             return 0;
         }
     }
@@ -371,31 +421,28 @@ int load_csv_dataset(
     int row_count = 0;
     int row_number = 0;
     char* line;
+
     while ((line = read_line(file)) != NULL) {
         row_number++;
-        if (has_header && row_number == 1) {
-            free(line);
-            continue;
-        }
-        if (line[0] == '\0') {
+        if ((has_header && row_number == 1) || line[0] == '\0') {
             free(line);
             continue;
         }
 
         char** columns = NULL;
         int column_count = split_delimited(line, delimiter, &columns);
-        if (column_count < required_columns ||
-            !scan_fields(dataset->x_fields, x_count, columns, column_count) ||
-            !scan_fields(dataset->y_fields, y_count, columns, column_count)) {
-            free(columns);
-            free(line);
+        int valid = column_count >= required_columns &&
+            scan_fields(dataset->x_fields, x_count, columns, column_count) &&
+            scan_fields(dataset->y_fields, y_count, columns, column_count);
+        free(columns);
+        free(line);
+
+        if (!valid) {
             fclose(file);
             clear_dataset(dataset);
             return 0;
         }
         row_count++;
-        free(columns);
-        free(line);
     }
 
     if (row_count == 0) {
@@ -404,13 +451,16 @@ int load_csv_dataset(
         return 0;
     }
 
-    dataset->input_size = calculate_layout(dataset->x_fields, x_count);
-    dataset->output_size = calculate_layout(dataset->y_fields, y_count);
+    int max_vocab_size = 0;
+    dataset->input_size = finalize_layout(dataset->x_fields, x_count, &max_vocab_size);
+    dataset->output_size = finalize_layout(dataset->y_fields, y_count, &max_vocab_size);
     if (dataset->input_size <= 0 || dataset->output_size <= 0) {
         fclose(file);
         clear_dataset(dataset);
         return 0;
     }
+
+    dataset->vocab_size = max_vocab_size;
     dataset->size = row_count;
     dataset->kind = DATASET_TABLE;
     dataset->x = calloc((size_t)row_count * (size_t)dataset->input_size, sizeof(float));
@@ -424,6 +474,7 @@ int load_csv_dataset(
     rewind(file);
     row_number = 0;
     int row = 0;
+
     while ((line = read_line(file)) != NULL) {
         row_number++;
         if ((has_header && row_number == 1) || line[0] == '\0') {
@@ -440,6 +491,7 @@ int load_csv_dataset(
             encode_fields(dataset->y_fields, y_count, columns, column_count, y);
         free(columns);
         free(line);
+
         if (!valid) {
             fclose(file);
             clear_dataset(dataset);
@@ -525,21 +577,36 @@ int dataset_vocab_size(Dataset* dataset) {
 }
 
 int dataset_copy_row(Dataset* dataset, int index, float* x, float* y) {
-    if (dataset == NULL || dataset->kind != DATASET_TABLE || index < 0 || index >= dataset->size) {
+    if (dataset == NULL || dataset->kind != DATASET_TABLE ||
+        index < 0 || index >= dataset->size || x == NULL || y == NULL) {
         return 0;
     }
-    memcpy(x, dataset->x + (size_t)index * (size_t)dataset->input_size,
-        (size_t)dataset->input_size * sizeof(float));
-    memcpy(y, dataset->y + (size_t)index * (size_t)dataset->output_size,
-        (size_t)dataset->output_size * sizeof(float));
+
+    memcpy(
+        x,
+        dataset->x + (size_t)index * (size_t)dataset->input_size,
+        (size_t)dataset->input_size * sizeof(float)
+    );
+    memcpy(
+        y,
+        dataset->y + (size_t)index * (size_t)dataset->output_size,
+        (size_t)dataset->output_size * sizeof(float)
+    );
     return 1;
 }
 
-int dataset_copy_token_window(Dataset* dataset, int start, int sequence_length, float* x, float* y) {
-    if (dataset == NULL || dataset->kind != DATASET_TEXT || sequence_length <= 0 || start < 0 ||
-        start + sequence_length >= dataset->token_count) {
+int dataset_copy_token_window(
+    Dataset* dataset,
+    int start,
+    int sequence_length,
+    float* x,
+    float* y
+) {
+    if (dataset == NULL || dataset->kind != DATASET_TEXT || sequence_length <= 0 ||
+        start < 0 || start + sequence_length >= dataset->token_count) {
         return 0;
     }
+
     memcpy(x, dataset->tokens + start, (size_t)sequence_length * sizeof(float));
     memcpy(y, dataset->tokens + start + 1, (size_t)sequence_length * sizeof(float));
     return 1;
@@ -549,10 +616,12 @@ void dataset_encode_text(Dataset* dataset, const char* text, float* output) {
     if (dataset == NULL || dataset->kind != DATASET_TABLE || text == NULL || output == NULL) {
         return;
     }
-    for (int i=0; i<dataset->input_size; i++) {
+
+    for (int i = 0; i < dataset->input_size; i++) {
         output[i] = 0.0f;
     }
-    for (int i=0; i<dataset->x_field_count; i++) {
+
+    for (int i = 0; i < dataset->x_field_count; i++) {
         FieldSpec* field = &dataset->x_fields[i];
         if (field->type == DATA_TEXT) {
             encode_field(field, text, output + field->offset);
@@ -565,9 +634,10 @@ int dataset_argmax(Dataset* dataset, float* values) {
     if (dataset == NULL || values == NULL || dataset->output_size <= 0) {
         return -1;
     }
+
     int max_index = 0;
     float max_value = values[0];
-    for (int i=1; i<dataset->output_size; i++) {
+    for (int i = 1; i < dataset->output_size; i++) {
         if (values[i] > max_value) {
             max_value = values[i];
             max_index = i;
@@ -580,7 +650,8 @@ const char* dataset_label(Dataset* dataset, int index) {
     if (dataset == NULL || dataset->kind != DATASET_TABLE) {
         return NULL;
     }
-    for (int i=0; i<dataset->y_field_count; i++) {
+
+    for (int i = 0; i < dataset->y_field_count; i++) {
         FieldSpec* field = &dataset->y_fields[i];
         if (field->type == DATA_LABEL) {
             if (index < field->offset || index >= field->offset + field->width) {
