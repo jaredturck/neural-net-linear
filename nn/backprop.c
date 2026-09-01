@@ -1,45 +1,49 @@
+#include <string.h>
 #include "activation.h"
 #include "layers.h"
 
-void compute_softmax_gradients(Layer* layer, float* y_array) {
-    for (int i=0; i<layer->output_neurons; i++) {
-        layer->deltas[i] = layer->backprop_cache->logits[i] - y_array[i];
-        layer->bias_gradients[i] += layer->deltas[i];
-    }
+static void accumulate_parameter_and_input_gradients(Layer* layer) {
+    const int input_neurons = layer->input_neurons;
+    const float* restrict x = layer->backprop_cache->x_array;
+    const float* restrict weights = layer->weights;
+    float* restrict gradients = layer->gradients;
+    float* restrict propagated = layer->layer_deltas;
 
-    for (int i=0; i<layer->output_neurons; i++) {
-        for (int j=0; j<layer->input_neurons; j++) {
-            layer->gradients[i][j] += layer->deltas[i] * layer->backprop_cache->x_array[j];
-        }
-    }
+    memset(propagated, 0, (size_t)input_neurons * sizeof(float));
 
-    for (int i=0; i<layer->input_neurons; i++) {
-        float total = 0.0f;
-        for (int j=0; j<layer->output_neurons; j++) {
-            total += layer->weights[j][i] * layer->deltas[j];
+    for (int output = 0; output < layer->output_neurons; output++) {
+        const float delta = layer->deltas[output];
+        const size_t row_offset = (size_t)output * (size_t)input_neurons;
+        const float* restrict weight_row = weights + row_offset;
+        float* restrict gradient_row = gradients + row_offset;
+
+        for (int input = 0; input < input_neurons; input++) {
+            gradient_row[input] += delta * x[input];
+            propagated[input] += weight_row[input] * delta;
         }
-        layer->layer_deltas[i] = total;
     }
 }
 
+void compute_softmax_gradients(Layer* layer, float* y_array) {
+    for (int output = 0; output < layer->output_neurons; output++) {
+        const float delta = layer->backprop_cache->logits[output] - y_array[output];
+        layer->deltas[output] = delta;
+        layer->bias_gradients[output] += delta;
+    }
+
+    accumulate_parameter_and_input_gradients(layer);
+}
+
 void compute_layer_gradients(Layer* layer, float* deltas) {
-    for (int i=0; i<layer->output_neurons; i++) {
-        float derivative = activation_derivative(layer->activation_type, layer->backprop_cache->output[i]);
-        layer->deltas[i] = deltas[i] * derivative;
-        layer->bias_gradients[i] += layer->deltas[i];
+    for (int output = 0; output < layer->output_neurons; output++) {
+        const float derivative = activation_derivative(
+            layer->activation_type,
+            layer->backprop_cache->output[output]
+        );
+        const float delta = deltas[output] * derivative;
+        layer->deltas[output] = delta;
+        layer->bias_gradients[output] += delta;
     }
 
-    for (int i=0; i<layer->output_neurons; i++) {
-        for (int j=0; j<layer->input_neurons; j++) {
-            layer->gradients[i][j] += layer->deltas[i] * layer->backprop_cache->x_array[j];
-        }
-    }
-
-    for (int i=0; i<layer->input_neurons; i++) {
-        float total = 0.0f;
-        for (int j=0; j<layer->output_neurons; j++) {
-            total += layer->weights[j][i] * layer->deltas[j];
-        }
-        layer->layer_deltas[i] = total;
-    }
+    accumulate_parameter_and_input_gradients(layer);
 }

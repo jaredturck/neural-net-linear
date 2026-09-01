@@ -1,11 +1,11 @@
 #ifndef LAYERS_H
 #define LAYERS_H
 
-#include <stdlib.h>
+#include <stddef.h>
 #include "activation.h"
 
 typedef struct {
-    float* x_array;
+    const float* x_array;
     float* output;
     float* logits;
 } BackpropCache;
@@ -13,11 +13,12 @@ typedef struct {
 typedef struct {
     int input_neurons;
     int output_neurons;
-    float** weights;
+    size_t parameter_count;
+    float* weights;
     float* bias;
     float* bias_gradients;
     BackpropCache* backprop_cache;
-    float** gradients;
+    float* gradients;
     ActivationFunction* activation_function;
     ActivationType activation_type;
     float* deltas;
@@ -33,6 +34,6 @@ Layer* create_layer(
 void zero_layer_gradients(Layer* layer);
 void scale_layer_gradients(Layer* layer, float scale);
 void free_layer(Layer* layer);
-float* Linear(Layer* layer, float* x_array);
+float* Linear(Layer* layer, const float* x_array);
 
 #endif
