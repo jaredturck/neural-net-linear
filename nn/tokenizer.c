@@ -26,6 +26,15 @@ struct BPETokenizer {
     int* token_lengths;
 };
 
+
+static int checked_array_bytes(size_t count, size_t element_size, size_t* bytes) {
+    if (bytes == NULL || (element_size != 0 && count > SIZE_MAX / element_size)) {
+        return 0;
+    }
+    *bytes = count * element_size;
+    return 1;
+}
+
 static uint64_t pair_key(int32_t left, int32_t right) {
     return ((uint64_t)(uint32_t)left << 32) | (uint32_t)right;
 }
@@ -48,10 +57,10 @@ static size_t next_power_of_two(size_t value) {
 }
 
 static int pair_table_init(PairTable* table, size_t expected_pairs) {
-    size_t requested = expected_pairs < 16 ? 16 : expected_pairs * 2;
     if (expected_pairs > SIZE_MAX / 2) {
         return 0;
     }
+    size_t requested = expected_pairs < 16 ? 16 : expected_pairs * 2;
     size_t capacity = next_power_of_two(requested);
     if (capacity == 0) {
         return 0;
@@ -268,7 +277,10 @@ BPETokenizer* bpe_train_file(const char* path, int target_vocab_size) {
     }
 
     BPETokenizer* tokenizer = create_tokenizer(target_vocab_size);
-    int32_t* tokens = malloc((size_t)byte_count * sizeof(int32_t));
+    size_t token_bytes = 0;
+    int32_t* tokens = checked_array_bytes((size_t)byte_count, sizeof(int32_t), &token_bytes)
+        ? malloc(token_bytes)
+        : NULL;
     if (tokenizer == NULL || tokens == NULL) {
         free(bytes);
         free(tokens);
@@ -332,14 +344,17 @@ int bpe_encode(
     int32_t* output,
     int output_capacity
 ) {
-    if (tokenizer == NULL || input == NULL || input_length < 0) {
+    if (tokenizer == NULL || input_length < 0 || (input_length > 0 && input == NULL)) {
         return -1;
     }
     if (input_length == 0) {
         return 0;
     }
 
-    int32_t* tokens = malloc((size_t)input_length * sizeof(int32_t));
+    size_t token_bytes = 0;
+    int32_t* tokens = checked_array_bytes((size_t)input_length, sizeof(int32_t), &token_bytes)
+        ? malloc(token_bytes)
+        : NULL;
     if (tokens == NULL) {
         return -1;
     }
@@ -387,7 +402,10 @@ int bpe_encode_file(BPETokenizer* tokenizer, const char* path, int32_t** output_
         return -1;
     }
 
-    int32_t* tokens = malloc((size_t)token_count * sizeof(int32_t));
+    size_t token_bytes = 0;
+    int32_t* tokens = checked_array_bytes((size_t)token_count, sizeof(int32_t), &token_bytes)
+        ? malloc(token_bytes)
+        : NULL;
     if (tokens == NULL) {
         free(bytes);
         return -1;
@@ -411,8 +429,11 @@ int bpe_decode(
     unsigned char* output,
     int output_capacity
 ) {
-    if (tokenizer == NULL || tokens == NULL || token_count < 0) {
+    if (tokenizer == NULL || token_count < 0 || (token_count > 0 && tokens == NULL)) {
         return -1;
+    }
+    if (token_count == 0) {
+        return 0;
     }
 
     size_t total = 0;
@@ -505,7 +526,7 @@ BPETokenizer* bpe_load(const char* path) {
         }
     }
 
-    if (fclose(file) != 0) {
+    if (fgetc(file) != EOF || ferror(file) || fclose(file) != 0) {
         free_bpe_tokenizer(tokenizer);
         return NULL;
     }
@@ -518,6 +539,43 @@ int bpe_vocab_size(BPETokenizer* tokenizer) {
 
 int bpe_merge_count(BPETokenizer* tokenizer) {
     return tokenizer == NULL ? 0 : tokenizer->merge_count;
+}
+
+uint64_t bpe_fingerprint(BPETokenizer* tokenizer) {
+    if (tokenizer == NULL) {
+        return 0;
+    }
+
+    /* FNV-1a over the tokenizer format version and ordered merge rules. */
+    uint64_t hash = UINT64_C(1469598103934665603);
+    const uint64_t prime = UINT64_C(1099511628211);
+    const unsigned char version[] = {'N', 'N', 'B', 'P', 'E', '1'};
+    for (size_t i = 0; i < sizeof(version); i++) {
+        hash ^= version[i];
+        hash *= prime;
+    }
+
+    uint32_t count = (uint32_t)tokenizer->merge_count;
+    for (int byte = 0; byte < 4; byte++) {
+        hash ^= (unsigned char)(count >> (byte * 8));
+        hash *= prime;
+    }
+
+    for (int i = 0; i < tokenizer->merge_count; i++) {
+        uint32_t values[2] = {
+            (uint32_t)tokenizer->merges[i].left,
+            (uint32_t)tokenizer->merges[i].right
+        };
+        for (int value = 0; value < 2; value++) {
+            for (int byte = 0; byte < 4; byte++) {
+                hash ^= (unsigned char)(values[value] >> (byte * 8));
+                hash *= prime;
+            }
+        }
+    }
+
+    /* Reserve zero for an unbound model. */
+    return hash == 0 ? UINT64_C(1) : hash;
 }
 
 void free_bpe_tokenizer(BPETokenizer* tokenizer) {
